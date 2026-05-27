@@ -1,0 +1,185 @@
+[
+  {
+    "id": "quiz_1779857549408",
+    "name": "Quiz de Combinaciones de Teclas y Escritura",
+    "questions": [
+      {
+        "text": "¿Qué símbolo se escribe con Shift + 8?",
+        "options": [
+          ")",
+          "(",
+          "[",
+          "{"
+        ],
+        "correctIndex": 1,
+        "timeLimit": 45
+      },
+      {
+        "text": "¿Qué hace la combinación de teclas Ctrl + V?",
+        "options": [
+          "Guardar el documento",
+          "Pegar contenido copiado",
+          "Seleccionar todo",
+          "Copiar contenido"
+        ],
+        "correctIndex": 1,
+        "timeLimit": 45
+      },
+      {
+        "text": "¿Qué símbolo se escribe con Shift + 2?",
+        "options": [
+          "@",
+          "#",
+          "\"",
+          "&"
+        ],
+        "correctIndex": 2,
+        "timeLimit": 45
+      },
+      {
+        "text": "¿Cómo se escribe el punto (.)?",
+        "options": [
+          "Alt + .",
+          "Con la tecla junto a la coma",
+          "Ctrl + .",
+          "Shift + ."
+        ],
+        "correctIndex": 1,
+        "timeLimit": 45
+      },
+      {
+        "text": "¿Qué hace la combinación de teclas Ctrl + C?",
+        "options": [
+          "Cambiar el color del texto",
+          "Pegar contenido",
+          "Copiar un texto o archivo",
+          "Cortar un archivo"
+        ],
+        "correctIndex": 2,
+        "timeLimit": 45
+      },
+      {
+        "text": "¿Qué símbolo se escribe con Shift + , ?",
+        "options": [
+          "<",
+          ";",
+          ":",
+          ">"
+        ],
+        "correctIndex": 1,
+        "timeLimit": 45
+      },
+      {
+        "text": "¿Qué hace la combinación de teclas Ctrl + Z?",
+        "options": [
+          "Guardar el documento",
+          "Cerrar la ventana",
+          "Copiar un texto",
+          "Deshacer la última acción"
+        ],
+        "correctIndex": 3,
+        "timeLimit": 45
+      },
+      {
+        "text": "¿Qué símbolo se escribe con Shift + . ?",
+        "options": [
+          ">",
+          ":",
+          "<",
+          "¿"
+        ],
+        "correctIndex": 1,
+        "timeLimit": 45
+      },
+      {
+        "text": "¿Qué símbolo se escribe con Shift + 9?",
+        "options": [
+          "]",
+          ")",
+          "(",
+          "}"
+        ],
+        "correctIndex": 1,
+        "timeLimit": 45
+      },
+      {
+        "text": "¿Qué símbolo se escribe con Shift + 0?",
+        "options": [
+          "!",
+          "(",
+          "=",
+          ")"
+        ],
+        "correctIndex": 2,
+        "timeLimit": 45
+      },
+      {
+        "text": "¿Cómo se escribe el signo de interrogación de apertura (¿)?",
+        "options": [
+          "Ctrl + ?",
+          "Con la tecla donde está el signo de interrogación",
+          "Alt + 2",
+          "Shift + 1"
+        ],
+        "correctIndex": 1,
+        "timeLimit": 45
+      },
+      {
+        "text": "¿Qué hace la combinación de teclas Ctrl + G en Word?",
+        "options": [
+          "Abrir una imagen",
+          "Guardar un documento",
+          "Cerrar Word",
+          "Copiar texto"
+        ],
+        "correctIndex": 1,
+        "timeLimit": 45
+      },
+      {
+        "text": "¿Qué símbolo se escribe con Shift + 1?",
+        "options": [
+          "$",
+          "\"",
+          "!",
+          "#"
+        ],
+        "correctIndex": 2,
+        "timeLimit": 45
+      },
+      {
+        "text": "¿Puedes copiar una imagen utilizando Ctrl + V?",
+        "options": [
+          "Sí, Ctrl + V copia imágenes",
+          "No, Ctrl + V sirve para pegar",
+          "Sí, pero solo en Word",
+          "No, porque Ctrl + V elimina imágenes"
+        ],
+        "correctIndex": 1,
+        "timeLimit": 45
+      },
+      {
+        "text": "¿Cómo puedes pegar una imagen en Word?",
+        "options": [
+          "Usando Ctrl + V",
+          "Usando Ctrl + Z",
+          "Usando Ctrl + C",
+          "Usando Shift + 1"
+        ],
+        "correctIndex": 0,
+        "timeLimit": 45
+      },
+      {
+        "text": "¿Qué combinación de teclas se usa para copiar una imagen o texto?",
+        "options": [
+          "Ctrl + Z",
+          "Ctrl + C",
+          "Ctrl + G",
+          "Ctrl + V"
+        ],
+        "correctIndex": 1,
+        "timeLimit": 45
+      }
+    ],
+    "createdAt": "2026-05-27T04:52:29.408Z"
+  }
+]

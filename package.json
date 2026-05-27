@@ -1,0 +1,11 @@
+{
+  "name": "versus-root",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n SERVER,CLIENT -c green,cyan \"pnpm --dir server run dev\" \"pnpm --dir battle-group dev\"",
+    "install:all": "pnpm --dir server install && pnpm --dir battle-group install"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
