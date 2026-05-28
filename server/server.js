@@ -25,28 +25,31 @@ function readQuizzes() {
 }
 
 function writeQuizzes(data) {
-  fs.writeFileSync(QUIZZES_FILE, JSON.stringify(data, null, 2));
+  // Escritura atómica: escribe en tmp y renombra para evitar JSON corrupto
+  // si el proceso muere a mitad de la escritura.
+  const tmp = QUIZZES_FILE + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
+  fs.renameSync(tmp, QUIZZES_FILE);
 }
 
 // ── Game state ────────────────────────────────────────────────────────────────
 
 function createInitialState() {
   return {
-    phase: 'lobby',           // 'lobby' | 'question' | 'results' | 'podium'
-    teams: {},                // { [socketId]: Team }
+    phase: 'lobby',
+    teams: {},
     currentQuiz: null,
     currentQuestionIndex: -1,
     questionStartTime: null,
-    answers: {},              // { [socketId]: { optionIndex, timeMs, correct, points } }
-    nextJoinIndex: 0,         // contador para asignar carril fijo al registrarse
+    answers: {},
+    nextJoinIndex: 0,
   };
 }
 
 let game = createInitialState();
 
-// Timers de limpieza por desconexión: { [socketId]: timeoutId }
-// El equipo se borra sólo si no reconecta en DISCONNECT_TTL ms.
-const DISCONNECT_TTL = 5 * 60 * 1000; // 5 minutos
+// Timers de gracia por desconexión — el equipo se borra si no reconecta en TTL.
+const DISCONNECT_TTL = 5 * 60 * 1000;
 const disconnectTimers = {};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -56,20 +59,6 @@ function getTeamsSorted() {
     if (b.score !== a.score) return b.score - a.score;
     return a.totalTime - b.totalTime;
   });
-}
-
-function getRacePositions() {
-  const sorted = getTeamsSorted(); // ordenado por score → sirve para calcular rank
-  const rankMap = new Map(sorted.map((t, i) => [t.socketId, i]));
-
-  // Devuelve en orden de registro (joinIndex fijo = carril fijo)
-  return Object.values(game.teams)
-    .sort((a, b) => a.joinIndex - b.joinIndex)
-    .map(t => ({
-      ...t,
-      rank: rankMap.get(t.socketId) ?? 0,
-      progress: Math.min(t.score / 12, 1),
-    }));
 }
 
 function getStateSnapshot() {
@@ -157,13 +146,8 @@ io.on('connection', (socket) => {
 
     if (nextIdx >= game.currentQuiz.questions.length) {
       game.phase = 'podium';
-      // El podio usa orden por puntaje, no por carril
       const byScore = getTeamsSorted();
-      const podiumData = {
-        podium: byScore.slice(0, 3),
-        all:    byScore,
-      };
-      io.emit('game_over', podiumData);
+      io.emit('game_over', { podium: byScore.slice(0, 3), all: byScore });
       return;
     }
 
@@ -181,9 +165,7 @@ io.on('connection', (socket) => {
       timeLimit: q.timeLimit ?? 30,
     };
 
-    // Jugadores NO ven el índice correcto
     io.to('players').emit('question_start', base);
-    // Admin sí lo ve
     io.to('admin').emit('question_start', { ...base, correctIndex: q.correctIndex });
   });
 
@@ -199,21 +181,28 @@ io.on('connection', (socket) => {
         correct: a.correct,
         timeMs: a.timeMs,
       })),
-      leaderboard: getRacePositions(),
+      leaderboard: getTeamsSorted(),
     });
   });
 
   socket.on('reset_game', () => {
+    // Cancelar todos los timers de desconexión pendientes
+    Object.keys(disconnectTimers).forEach(sid => {
+      clearTimeout(disconnectTimers[sid]);
+      delete disconnectTimers[sid];
+    });
+
+    const preservedNextJoinIndex = game.nextJoinIndex;
     const preservedTeams = Object.fromEntries(
       Object.entries(game.teams).map(([sid, team]) => [
         sid,
         { ...team, score: 0, totalTime: 0, hasParticipated: false },
       ])
     );
-    const preservedNextJoinIndex = game.nextJoinIndex;
+
     game = createInitialState();
     game.teams = preservedTeams;
-    game.nextJoinIndex = preservedNextJoinIndex; // mantener carriles
+    game.nextJoinIndex = preservedNextJoinIndex;
     io.emit('game_state', getStateSnapshot());
     console.log('Juego reiniciado');
   });
@@ -224,25 +213,21 @@ io.on('connection', (socket) => {
     const name = teamName?.trim();
     if (!name) return socket.emit('join_error', { message: 'Nombre inválido' });
 
-    // Buscar reconexión por sessionId
     const reconnect = Object.entries(game.teams).find(([, t]) => t.sessionId === sessionId);
     if (reconnect) {
       const [oldSid, data] = reconnect;
-      // Cancelar el timer de limpieza si estaba pendiente
       if (disconnectTimers[oldSid]) {
         clearTimeout(disconnectTimers[oldSid]);
         delete disconnectTimers[oldSid];
       }
       delete game.teams[oldSid];
       game.teams[socket.id] = { ...data, socketId: socket.id };
-      // Trasladar respuesta registrada al nuevo socketId
       if (game.answers[oldSid]) {
         game.answers[socket.id] = game.answers[oldSid];
         delete game.answers[oldSid];
       }
       console.log(`Reconectado: ${name}`);
     } else {
-      // Verificar nombre duplicado
       if (Object.values(game.teams).some(t => t.name === name)) {
         return socket.emit('join_error', {
           message: `"${name}" ya está en uso. Elegí otro nombre.`,
@@ -255,7 +240,7 @@ io.on('connection', (socket) => {
         score: 0,
         totalTime: 0,
         hasParticipated: false,
-        joinIndex: game.nextJoinIndex++, // carril fijo para siempre
+        joinIndex: game.nextJoinIndex++,
       };
       console.log(`Nuevo equipo: ${name}`);
     }
@@ -264,11 +249,10 @@ io.on('connection', (socket) => {
     socket.emit('join_success', { team: game.teams[socket.id] });
     socket.emit('game_state', getStateSnapshot());
 
-    // Si el juego está en medio de una pregunta, enviar la pregunta actual con tiempo restante
+    // Catch-up si hay una pregunta activa
     if (game.phase === 'question' && game.currentQuiz) {
       const q = game.currentQuiz.questions[game.currentQuestionIndex];
-      const elapsedMs = Date.now() - game.questionStartTime;
-      const timeLeftMs = Math.max(0, q.timeLimit * 1000 - elapsedMs);
+      const timeLeftMs = Math.max(0, q.timeLimit * 1000 - (Date.now() - game.questionStartTime));
       socket.emit('question_start', {
         index: game.currentQuestionIndex,
         total: game.currentQuiz.questions.length,
@@ -277,7 +261,7 @@ io.on('connection', (socket) => {
         timeLimit: q.timeLimit,
         timeLeftMs,
       });
-      socket.emit('race_update', getRacePositions());
+      socket.emit('race_update', getTeamsSorted());
       if (game.answers[socket.id]) {
         socket.emit('answer_result', game.answers[socket.id]);
       }
@@ -288,14 +272,13 @@ io.on('connection', (socket) => {
 
   socket.on('submit_answer', ({ optionIndex }) => {
     if (game.phase !== 'question') return;
-    if (game.answers[socket.id]) return;        // No doble envío
+    if (game.answers[socket.id]) return;
     if (!game.teams[socket.id]) return;
 
     const timeMs = Date.now() - game.questionStartTime;
     const q = game.currentQuiz.questions[game.currentQuestionIndex];
     const correct = optionIndex === q.correctIndex;
-    const pointsPerQ = 12 / game.currentQuiz.questions.length;
-    const points = correct ? pointsPerQ : 0;
+    const points = correct ? 12 / game.currentQuiz.questions.length : 0;
 
     game.answers[socket.id] = { optionIndex, timeMs, correct, points };
     game.teams[socket.id].hasParticipated = true;
@@ -304,10 +287,8 @@ io.on('connection', (socket) => {
     );
     game.teams[socket.id].totalTime += timeMs;
 
-    // Confirmar al jugador
     socket.emit('answer_result', { correct, points, timeMs });
 
-    // Notificar al admin
     io.to('admin').emit('answer_received', {
       teamName: game.teams[socket.id].name,
       correct,
@@ -315,14 +296,10 @@ io.on('connection', (socket) => {
       totalTeams: Object.keys(game.teams).length,
     });
 
-    // Solo el admin ve la carrera en tiempo real
-    io.to('admin').emit('race_update', getRacePositions());
+    io.to('admin').emit('race_update', getTeamsSorted());
   });
 
-  // ── Logout explícito (botón "Salir") ─────────────────────────────────────
-
   socket.on('logout', () => {
-    // El jugador eligió salir → siempre se borra de inmediato.
     if (disconnectTimers[socket.id]) {
       clearTimeout(disconnectTimers[socket.id]);
       delete disconnectTimers[socket.id];
@@ -332,15 +309,11 @@ io.on('connection', (socket) => {
     io.to('admin').emit('teams_update', getTeamsSorted());
   });
 
-  // ── Disconnect ────────────────────────────────────────────────────────────
-
   socket.on('disconnect', () => {
     console.log(`[-] ${socket.id}`);
     const team = game.teams[socket.id];
     if (!team) return;
 
-    // No borrar inmediatamente: dar un período de gracia para reconexión.
-    // Si el jugador no vuelve en DISCONNECT_TTL ms → se limpia solo.
     disconnectTimers[socket.id] = setTimeout(() => {
       delete game.teams[socket.id];
       delete disconnectTimers[socket.id];
@@ -348,7 +321,6 @@ io.on('connection', (socket) => {
       console.log(`[timeout] ${team.name} removido por inactividad`);
     }, DISCONNECT_TTL);
 
-    // El admin ve al equipo "aún presente" hasta que expire el timer.
     io.to('admin').emit('teams_update', getTeamsSorted());
   });
 });
@@ -361,12 +333,10 @@ server.listen(PORT, '0.0.0.0', () => {
   const lanIps = Object.values(os.networkInterfaces())
     .flat()
     .filter(i => i.family === 'IPv4' && !i.internal)
-    .map(i => `    LAN:     http://${i.address}:${PORT}  ← compartí esta con los jugadores`);
+    .map(i => `    LAN:     http://${i.address}:${PORT}`);
 
   console.log('\n🏁  Versus Server listo!');
   console.log(`    Local:   http://localhost:${PORT}`);
   lanIps.forEach(l => console.log(l));
-  console.log('\n💡  Auto-discovery futuro (sin compartir IP):');
-  console.log('    Linux:  avahi-publish-service Versus _versus._tcp 3001');
-  console.log('    Node:   npm i mdns  →  mdns.createAdvertisement(...)\n');
+  console.log('');
 });

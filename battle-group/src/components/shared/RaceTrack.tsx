@@ -2,13 +2,10 @@ import { memo } from 'react'
 import type { Team } from '../../types/game'
 import cartImg from '../../assets/carts/cart.png'
 
+import { CAR_COLORS } from '../../constants/colors'
+
 const MEDALS: Record<number, string> = { 0: '🥇', 1: '🥈', 2: '🥉' }
 const CAR_W = 64
-
-const CAR_COLORS = [
-  '#FF4444', '#FFD700', '#4488FF', '#44FF88',
-  '#FF8844', '#AA44FF', '#44FFFF', '#FF44AA',
-]
 
 const prefersReducedMotion =
   typeof window !== 'undefined' &&

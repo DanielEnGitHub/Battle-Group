@@ -109,46 +109,45 @@ export default function AdminGameControl({
         )}
 
         {/* Resumen de resultados */}
-        {phase === 'results' && questionResults && (
-          <div className="bg-[#12121a] border border-[#2a2a3a] rounded-xl p-4 mb-4">
-            <p className="text-xs text-zinc-500 uppercase tracking-widest mb-3">
-              Resultados
-            </p>
-            <div className="flex gap-6 justify-center">
-              <div className="text-center">
-                <p className="text-3xl font-black text-green-400">
-                  {questionResults.answers.filter(a => a.correct).length}
-                </p>
-                <p className="text-xs text-zinc-500">Correctas</p>
+        {phase === 'results' && questionResults && (() => {
+          const correct = questionResults.answers.filter(a => a.correct)
+          return (
+            <div className="bg-[#12121a] border border-[#2a2a3a] rounded-xl p-4 mb-4">
+              <p className="text-xs text-zinc-500 uppercase tracking-widest mb-3">
+                Resultados
+              </p>
+              <div className="flex gap-6 justify-center">
+                <div className="text-center">
+                  <p className="text-3xl font-black text-green-400">{correct.length}</p>
+                  <p className="text-xs text-zinc-500">Correctas</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-3xl font-black text-red-400">
+                    {questionResults.answers.length - correct.length}
+                  </p>
+                  <p className="text-xs text-zinc-500">Incorrectas</p>
+                </div>
               </div>
-              <div className="text-center">
-                <p className="text-3xl font-black text-red-400">
-                  {questionResults.answers.filter(a => !a.correct).length}
-                </p>
-                <p className="text-xs text-zinc-500">Incorrectas</p>
-              </div>
-            </div>
 
-            {/* Top 3 más rápidos */}
-            {questionResults.answers.filter(a => a.correct).length > 0 && (
-              <div className="mt-3 pt-3 border-t border-[#2a2a3a]">
-                <p className="text-xs text-zinc-600 mb-2">Más rápidos:</p>
-                {questionResults.answers
-                  .filter(a => a.correct)
-                  .sort((a, b) => a.timeMs - b.timeMs)
-                  .slice(0, 3)
-                  .map((a, i) => (
-                    <div key={i} className="flex items-center justify-between text-xs py-0.5">
-                      <span className="text-zinc-400">{a.teamName}</span>
-                      <span className="text-yellow-400 tabular-nums font-medium">
-                        {(a.timeMs / 1000).toFixed(2)}s
-                      </span>
-                    </div>
-                  ))}
-              </div>
-            )}
-          </div>
-        )}
+              {correct.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-[#2a2a3a]">
+                  <p className="text-xs text-zinc-600 mb-2">Más rápidos:</p>
+                  {[...correct]
+                    .sort((a, b) => a.timeMs - b.timeMs)
+                    .slice(0, 3)
+                    .map((a, i) => (
+                      <div key={i} className="flex items-center justify-between text-xs py-0.5">
+                        <span className="text-zinc-400">{a.teamName}</span>
+                        <span className="text-yellow-400 tabular-nums font-medium">
+                          {(a.timeMs / 1000).toFixed(2)}s
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </div>
+          )
+        })()}
 
         {/* Botones de acción */}
         <div className="mt-auto space-y-3">

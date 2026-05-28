@@ -6,9 +6,7 @@ export interface Team {
   name: string;
   score: number;
   totalTime: number;
-  joinIndex: number;  // orden de registro — define el carril, nunca cambia
-  rank?: number;
-  progress?: number;
+  joinIndex: number;
 }
 
 export interface Question {

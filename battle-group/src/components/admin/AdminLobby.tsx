@@ -1,10 +1,6 @@
 import type { Team } from '../../types/game'
 import RaceTrack from '../shared/RaceTrack'
-
-const CAR_COLORS = [
-  '#FF4444', '#FFD700', '#4488FF', '#44FF88',
-  '#FF8844', '#AA44FF', '#44FFFF', '#FF44AA',
-]
+import { CAR_COLORS } from '../../constants/colors'
 
 interface Props {
   teams: Team[]
