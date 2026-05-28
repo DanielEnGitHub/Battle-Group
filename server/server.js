@@ -87,30 +87,45 @@ function getStateSnapshot() {
 app.get('/api/quizzes', (_req, res) => res.json(readQuizzes()));
 
 app.post('/api/quizzes', (req, res) => {
-  const quizzes = readQuizzes();
-  const quiz = {
-    id: `quiz_${Date.now()}`,
-    name: req.body.name,
-    questions: req.body.questions || [],
-    createdAt: new Date().toISOString(),
-  };
-  quizzes.push(quiz);
-  writeQuizzes(quizzes);
-  res.status(201).json(quiz);
+  try {
+    const quizzes = readQuizzes();
+    const quiz = {
+      id: `quiz_${Date.now()}`,
+      name: req.body.name,
+      questions: req.body.questions || [],
+      createdAt: new Date().toISOString(),
+    };
+    quizzes.push(quiz);
+    writeQuizzes(quizzes);
+    res.status(201).json(quiz);
+  } catch (err) {
+    console.error('[POST /quizzes]', err);
+    res.status(500).json({ error: 'Error al guardar el quiz' });
+  }
 });
 
 app.put('/api/quizzes/:id', (req, res) => {
-  const quizzes = readQuizzes();
-  const idx = quizzes.findIndex(q => q.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'No encontrado' });
-  quizzes[idx] = { ...quizzes[idx], name: req.body.name, questions: req.body.questions };
-  writeQuizzes(quizzes);
-  res.json(quizzes[idx]);
+  try {
+    const quizzes = readQuizzes();
+    const idx = quizzes.findIndex(q => q.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ error: 'No encontrado' });
+    quizzes[idx] = { ...quizzes[idx], name: req.body.name, questions: req.body.questions };
+    writeQuizzes(quizzes);
+    res.json(quizzes[idx]);
+  } catch (err) {
+    console.error('[PUT /quizzes]', err);
+    res.status(500).json({ error: 'Error al actualizar el quiz' });
+  }
 });
 
 app.delete('/api/quizzes/:id', (req, res) => {
-  writeQuizzes(readQuizzes().filter(q => q.id !== req.params.id));
-  res.json({ ok: true });
+  try {
+    writeQuizzes(readQuizzes().filter(q => q.id !== req.params.id));
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[DELETE /quizzes]', err);
+    res.status(500).json({ error: 'Error al eliminar el quiz' });
+  }
 });
 
 // ── Socket.io ─────────────────────────────────────────────────────────────────
@@ -220,6 +235,11 @@ io.on('connection', (socket) => {
       }
       delete game.teams[oldSid];
       game.teams[socket.id] = { ...data, socketId: socket.id };
+      // Trasladar respuesta registrada al nuevo socketId
+      if (game.answers[oldSid]) {
+        game.answers[socket.id] = game.answers[oldSid];
+        delete game.answers[oldSid];
+      }
       console.log(`Reconectado: ${name}`);
     } else {
       // Verificar nombre duplicado
@@ -243,6 +263,26 @@ io.on('connection', (socket) => {
     socket.join('players');
     socket.emit('join_success', { team: game.teams[socket.id] });
     socket.emit('game_state', getStateSnapshot());
+
+    // Si el juego está en medio de una pregunta, enviar la pregunta actual con tiempo restante
+    if (game.phase === 'question' && game.currentQuiz) {
+      const q = game.currentQuiz.questions[game.currentQuestionIndex];
+      const elapsedMs = Date.now() - game.questionStartTime;
+      const timeLeftMs = Math.max(0, q.timeLimit * 1000 - elapsedMs);
+      socket.emit('question_start', {
+        index: game.currentQuestionIndex,
+        total: game.currentQuiz.questions.length,
+        text: q.text,
+        options: q.options,
+        timeLimit: q.timeLimit,
+        timeLeftMs,
+      });
+      socket.emit('race_update', getRacePositions());
+      if (game.answers[socket.id]) {
+        socket.emit('answer_result', game.answers[socket.id]);
+      }
+    }
+
     io.to('admin').emit('teams_update', getTeamsSorted());
   });
 
@@ -275,8 +315,8 @@ io.on('connection', (socket) => {
       totalTeams: Object.keys(game.teams).length,
     });
 
-    // Actualizar carrera en todos los dispositivos
-    io.emit('race_update', getRacePositions());
+    // Solo el admin ve la carrera en tiempo real
+    io.to('admin').emit('race_update', getRacePositions());
   });
 
   // ── Logout explícito (botón "Salir") ─────────────────────────────────────

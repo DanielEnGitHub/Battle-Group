@@ -79,23 +79,33 @@ export default function QuizManager({ apiUrl, onSelectQuiz }: Props) {
   const handleSave = async () => {
     if (!quizName.trim() || questions.some(q => !q.text.trim())) return
     setSaving(true)
-    const body = JSON.stringify({ name: quizName.trim(), questions })
-    const headers = { 'Content-Type': 'application/json' }
-    if (editingId) {
-      await fetch(`${apiUrl}/quizzes/${editingId}`, { method: 'PUT', headers, body })
-    } else {
-      await fetch(`${apiUrl}/quizzes`, { method: 'POST', headers, body })
+    try {
+      const body = JSON.stringify({ name: quizName.trim(), questions })
+      const headers = { 'Content-Type': 'application/json' }
+      const res = editingId
+        ? await fetch(`${apiUrl}/quizzes/${editingId}`, { method: 'PUT', headers, body })
+        : await fetch(`${apiUrl}/quizzes`, { method: 'POST', headers, body })
+      if (!res.ok) throw new Error(`Server error ${res.status}`)
+      await fetchQuizzes()
+      closeForm()
+    } catch {
+      setImportErr('Error al guardar. Verificá la conexión con el servidor y reintentá.')
+    } finally {
+      setSaving(false)
     }
-    await fetchQuizzes()
-    closeForm()
-    setSaving(false)
   }
 
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation()
     if (!confirm('¿Eliminar este quiz?')) return
-    await fetch(`${apiUrl}/quizzes/${id}`, { method: 'DELETE' })
-    fetchQuizzes()
+    try {
+      const res = await fetch(`${apiUrl}/quizzes/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error(`Server error ${res.status}`)
+    } catch {
+      setImportErr('Error al eliminar. Verificá la conexión con el servidor.')
+    } finally {
+      await fetchQuizzes()
+    }
   }
 
   // ── Export ────────────────────────────────────────────────────────────────
@@ -148,12 +158,17 @@ export default function QuizManager({ apiUrl, onSelectQuiz }: Props) {
     const parsed = parseQuizJson(text)
     e.target.value = ''
     if (!parsed) { setImportErr('JSON inválido. Revisá el formato.'); return }
-    await fetch(`${apiUrl}/quizzes`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(parsed),
-    })
-    await fetchQuizzes()
+    try {
+      const res = await fetch(`${apiUrl}/quizzes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(parsed),
+      })
+      if (!res.ok) throw new Error(`Server error ${res.status}`)
+      await fetchQuizzes()
+    } catch {
+      setImportErr('Error al importar. Verificá la conexión con el servidor y reintentá.')
+    }
   }
 
   // ── Import: JSON → pre-llenar formulario ─────────────────────────────────

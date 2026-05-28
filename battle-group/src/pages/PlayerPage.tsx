@@ -18,14 +18,14 @@ import Podium         from '../components/shared/Podium'
 
 type PlayerPhase = 'register' | 'lobby' | 'question' | 'answered' | 'results' | 'podium'
 
-const INACTIVITY_MS = 3 * 60 * 1000 // 3 minutos
+const INACTIVITY_MS = 3 * 60 * 1000
 
 export default function PlayerPage() {
-  // Lazy ref: el socket se crea en el primer render y no vuelve a crearse.
-  // Más confiable que useMemo (React puede descartar memos; los refs nunca).
   const socketRef       = useRef(io(SOCKET_URL))
   const socket          = socketRef.current
   const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Ref para acceder a la sesión dentro de listeners sin stale closure
+  const sessionRef      = useRef<SessionData | null>(null)
 
   const [phase,           setPhase]           = useState<PlayerPhase>('register')
   const [session,         setSession]         = useState<SessionData | null>(null)
@@ -35,7 +35,6 @@ export default function PlayerPage() {
   const [racePositions,   setRacePositions]   = useState<Team[]>([])
   const [podiumData,      setPodiumData]      = useState<PodiumData | null>(null)
 
-  // ── Auto-logout por inactividad ───────────────────────────────────────────
   const resetInactivityTimer = () => {
     if (inactivityTimer.current) clearTimeout(inactivityTimer.current)
     inactivityTimer.current = setTimeout(() => {
@@ -44,11 +43,33 @@ export default function PlayerPage() {
     }, INACTIVITY_MS)
   }
 
-  // ── Setup socket listeners ────────────────────────────────────────────────
+  const registerSession = (s: SessionData) => {
+    sessionRef.current = s
+    setSession(s)
+  }
+
   useEffect(() => {
+    // ── Reconexión automática al reconectar el socket ─────────────────────
+    // socket.io cambia el socket ID en cada reconexión. Sin esto, el servidor
+    // no encuentra al jugador en game.teams y no aparece en el listado.
+    socket.on('connect', () => {
+      if (sessionRef.current) {
+        socket.emit('join_room', sessionRef.current)
+      }
+    })
+
     socket.on('game_state', (state: GameStateSnapshot) => {
       setTeams(state.teams)
-      if (state.phase === 'podium') setPhase('podium')
+      if (state.phase === 'podium') {
+        setPhase('podium')
+      } else if (state.phase === 'lobby' && sessionRef.current) {
+        // Admin reinició la partida → todos vuelven al lobby
+        setPhase('lobby')
+        setCurrentQuestion(null)
+        setAnswerResult(null)
+        setRacePositions([])
+        setPodiumData(null)
+      }
     })
 
     socket.on('teams_update', (updatedTeams: Team[]) => {
@@ -58,6 +79,7 @@ export default function PlayerPage() {
     socket.on('question_start', (q: ActiveQuestion) => {
       setCurrentQuestion(q)
       setAnswerResult(null)
+      setRacePositions([])
       setPhase('question')
       resetInactivityTimer()
     })
@@ -80,21 +102,22 @@ export default function PlayerPage() {
       setPodiumData(data)
       setPhase('podium')
       if (inactivityTimer.current) clearTimeout(inactivityTimer.current)
-      localStorage.removeItem('versus_session')
+      // No borramos localStorage: si admin resetea, el jugador vuelve al lobby
+      // automáticamente sin necesidad de recargar
     })
 
-    // ── Reconexión automática desde localStorage ──────────────────────────
+    // ── Primera carga: reconectar desde localStorage ───────────────────────
+    // El evento 'connect' de arriba maneja las reconexiones posteriores.
+    // Este bloque solo aplica al cargar la página por primera vez.
     const saved = localStorage.getItem('versus_session')
     if (saved) {
       try {
         const savedSession: SessionData = JSON.parse(saved)
+        registerSession(savedSession)
         socket.emit('join_room', savedSession)
-        socket.once('join_success', ({ team }) => {
-          setSession({ teamName: team.name, sessionId: team.sessionId })
-          setPhase('lobby')
-          resetInactivityTimer()
-        })
         socket.once('join_error', () => {
+          sessionRef.current = null
+          setSession(null)
           localStorage.removeItem('versus_session')
           setPhase('register')
         })
@@ -110,7 +133,7 @@ export default function PlayerPage() {
   }, [socket])
 
   const handleRegistered = (s: SessionData) => {
-    setSession(s)
+    registerSession(s)
     setPhase('lobby')
     resetInactivityTimer()
   }
@@ -122,7 +145,7 @@ export default function PlayerPage() {
 
   const handleLogout = () => {
     localStorage.removeItem('versus_session')
-    socket.emit('logout')   // le avisa al servidor para que limpie el equipo
+    socket.emit('logout')
     socket.disconnect()
     window.location.reload()
   }
@@ -154,7 +177,6 @@ export default function PlayerPage() {
       <QuestionView
         question={currentQuestion}
         onAnswer={handleAnswer}
-        answered={false}
       />
     )
   }
@@ -169,7 +191,6 @@ export default function PlayerPage() {
     )
   }
 
-  // Lobby + fallback
   return (
     <div className="relative">
       <WaitingLobby

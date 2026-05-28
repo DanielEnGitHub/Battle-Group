@@ -39,6 +39,7 @@ export interface ActiveQuestion {
   text: string;
   options: string[];
   timeLimit: number;
+  timeLeftMs?: number;  // solo para join/reconexión mid-question
   correctIndex?: number; // Solo para admin
 }
 
