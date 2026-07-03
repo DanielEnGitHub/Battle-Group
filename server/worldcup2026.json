@@ -1,0 +1,51 @@
+{
+  "tournament": "Mundial 2026",
+  "note": "Semilla editable a mano. Cada partido con \"locked\": true muestra su resultado REAL y no se puede predecir. Los pendientes (\"locked\": false, \"result\": null) los completa el jugador. Corregí lo que haga falta acá y reiniciá el server.",
+  "rounds": [
+    { "id": "R32", "name": "Dieciseisavos" },
+    { "id": "R16", "name": "Octavos" },
+    { "id": "QF", "name": "Cuartos" },
+    { "id": "SF", "name": "Semifinales" },
+    { "id": "TP", "name": "Tercer puesto" },
+    { "id": "F", "name": "Final" }
+  ],
+  "matches": [
+    { "id": 73, "round": "R32", "home": "Canadá", "away": "Sudáfrica", "locked": true, "result": { "home": 1, "away": 0, "penWinner": null } },
+    { "id": 74, "round": "R32", "home": "Brasil", "away": "Japón", "locked": true, "result": { "home": 2, "away": 1, "penWinner": null } },
+    { "id": 75, "round": "R32", "home": "Alemania", "away": "Paraguay", "locked": true, "result": { "home": 1, "away": 1, "penWinner": "away" }, "note": "Paraguay 4-3 en penales" },
+    { "id": 76, "round": "R32", "home": "Países Bajos", "away": "Marruecos", "locked": true, "result": { "home": 1, "away": 1, "penWinner": "away" }, "note": "Marruecos 3-2 en penales" },
+    { "id": 77, "round": "R32", "home": "Noruega", "away": "Costa de Marfil", "locked": true, "result": { "home": 2, "away": 1, "penWinner": null } },
+    { "id": 78, "round": "R32", "home": "Francia", "away": "Suecia", "locked": true, "result": { "home": 3, "away": 0, "penWinner": null } },
+    { "id": 79, "round": "R32", "home": "México", "away": "Ecuador", "locked": true, "result": { "home": 2, "away": 1, "penWinner": null } },
+    { "id": 80, "round": "R32", "home": "Inglaterra", "away": "RD Congo", "locked": true, "result": { "home": 3, "away": 1, "penWinner": null } },
+    { "id": 81, "round": "R32", "home": "Bélgica", "away": "Senegal", "locked": true, "result": { "home": 3, "away": 2, "penWinner": null }, "note": "Bélgica gana en la prórroga" },
+    { "id": 82, "round": "R32", "home": "Estados Unidos", "away": "Bosnia y Herzegovina", "locked": true, "result": { "home": 2, "away": 0, "penWinner": null } },
+    { "id": 83, "round": "R32", "home": "Suiza", "away": "Argelia", "locked": true, "result": { "home": 2, "away": 0, "penWinner": null } },
+    { "id": 84, "round": "R32", "home": "España", "away": "Austria", "locked": true, "result": { "home": 3, "away": 0, "penWinner": null } },
+    { "id": 85, "round": "R32", "home": "Colombia", "away": "Ghana", "locked": false, "result": null },
+    { "id": 86, "round": "R32", "home": "Argentina", "away": "Cabo Verde", "locked": false, "result": null },
+    { "id": 87, "round": "R32", "home": "Portugal", "away": "Croacia", "locked": true, "result": { "home": 2, "away": 1, "penWinner": null } },
+    { "id": 88, "round": "R32", "home": "Australia", "away": "Egipto", "locked": false, "result": null },
+
+    { "id": 89, "round": "R16", "homeSource": 73, "awaySource": 76, "locked": false, "result": null },
+    { "id": 90, "round": "R16", "homeSource": 75, "awaySource": 78, "locked": false, "result": null },
+    { "id": 91, "round": "R16", "homeSource": 74, "awaySource": 77, "locked": false, "result": null },
+    { "id": 92, "round": "R16", "homeSource": 79, "awaySource": 80, "locked": false, "result": null },
+    { "id": 93, "round": "R16", "homeSource": 87, "awaySource": 84, "locked": false, "result": null },
+    { "id": 94, "round": "R16", "homeSource": 82, "awaySource": 81, "locked": false, "result": null },
+    { "id": 95, "round": "R16", "homeSource": 86, "awaySource": 88, "locked": false, "result": null },
+    { "id": 96, "round": "R16", "homeSource": 83, "awaySource": 85, "locked": false, "result": null },
+
+    { "id": 97, "round": "QF", "homeSource": 89, "awaySource": 90, "locked": false, "result": null },
+    { "id": 98, "round": "QF", "homeSource": 93, "awaySource": 94, "locked": false, "result": null },
+    { "id": 99, "round": "QF", "homeSource": 91, "awaySource": 92, "locked": false, "result": null },
+    { "id": 100, "round": "QF", "homeSource": 95, "awaySource": 96, "locked": false, "result": null },
+
+    { "id": 101, "round": "SF", "homeSource": 97, "awaySource": 98, "locked": false, "result": null },
+    { "id": 102, "round": "SF", "homeSource": 99, "awaySource": 100, "locked": false, "result": null },
+
+    { "id": 103, "round": "TP", "homeSource": 101, "awaySource": 102, "homeSourceType": "loser", "awaySourceType": "loser", "locked": false, "result": null },
+
+    { "id": 104, "round": "F", "homeSource": 101, "awaySource": 102, "locked": false, "result": null }
+  ]
+}

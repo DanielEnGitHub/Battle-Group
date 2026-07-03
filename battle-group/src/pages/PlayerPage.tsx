@@ -1,210 +1,213 @@
-import { useEffect, useRef, useState } from 'react'
-import { io } from 'socket.io-client'
-import { SOCKET_URL } from '../config'
-import type {
-  ActiveQuestion,
-  AnswerResult,
-  GameStateSnapshot,
-  PodiumData,
-  QuestionResults,
-  SessionData,
-  Team,
-} from '../types/game'
-import TeamRegister   from '../components/player/TeamRegister'
-import WaitingLobby   from '../components/player/WaitingLobby'
-import QuestionView   from '../components/player/QuestionView'
-import AnsweredView   from '../components/player/AnsweredView'
-import Podium         from '../components/shared/Podium'
+import { useEffect, useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
+import confetti from 'canvas-confetti'
+import type { Bracket, Picks } from '../types/bracket'
+import { fetchBracket, submitPrediction } from '../lib/api'
+import {
+  resolveBracket, champion, isPredictionComplete, isRoundComplete, roundPending,
+} from '../lib/bracket'
+import { withFlag } from '../constants/flags'
+import GroupRegister from '../components/GroupRegister'
+import MatchCard, { type Draft } from '../components/MatchCard'
 
-type PlayerPhase = 'register' | 'lobby' | 'question' | 'answered' | 'results' | 'podium'
-
-const INACTIVITY_MS = 3 * 60 * 1000
+type Phase = 'register' | 'predict' | 'done'
 
 export default function PlayerPage() {
-  const socketRef       = useRef(io(SOCKET_URL))
-  const socket          = socketRef.current
-  const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // Ref para acceder a la sesión dentro de listeners sin stale closure
-  const sessionRef      = useRef<SessionData | null>(null)
+  const [bracket, setBracket] = useState<Bracket | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
-  const [phase,           setPhase]           = useState<PlayerPhase>('register')
-  const [session,         setSession]         = useState<SessionData | null>(null)
-  const [teams,           setTeams]           = useState<Team[]>([])
-  const [currentQuestion, setCurrentQuestion] = useState<ActiveQuestion | null>(null)
-  const [answerResult,    setAnswerResult]    = useState<AnswerResult | null>(null)
-  const [racePositions,   setRacePositions]   = useState<Team[]>([])
-  const [podiumData,      setPodiumData]      = useState<PodiumData | null>(null)
-
-  const resetInactivityTimer = () => {
-    if (inactivityTimer.current) clearTimeout(inactivityTimer.current)
-    inactivityTimer.current = setTimeout(() => {
-      localStorage.removeItem('versus_session')
-      window.location.reload()
-    }, INACTIVITY_MS)
-  }
-
-  const registerSession = (s: SessionData) => {
-    sessionRef.current = s
-    setSession(s)
-  }
+  const [phase, setPhase] = useState<Phase>('register')
+  const [group, setGroup] = useState<{ groupName: string; members: string[] }>({ groupName: '', members: [] })
+  const [drafts, setDrafts] = useState<Record<number, Draft>>({})
+  const [roundIndex, setRoundIndex] = useState(0)
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
 
   useEffect(() => {
-    // ── Reconexión automática al reconectar el socket ─────────────────────
-    // socket.io cambia el socket ID en cada reconexión. Sin esto, el servidor
-    // no encuentra al jugador en game.teams y no aparece en el listado.
-    socket.on('connect', () => {
-      if (sessionRef.current) {
-        socket.emit('join_room', sessionRef.current)
-      }
-    })
+    fetchBracket().then(setBracket).catch(e => setLoadError(e.message))
+  }, [])
 
-    socket.on('game_state', (state: GameStateSnapshot) => {
-      setTeams(state.teams)
-      if (state.phase === 'podium') {
-        setPhase('podium')
-      } else if (state.phase === 'lobby' && sessionRef.current) {
-        // Admin reinició la partida → todos vuelven al lobby
-        setPhase('lobby')
-        setCurrentQuestion(null)
-        setAnswerResult(null)
-        setRacePositions([])
-        setPodiumData(null)
-      }
-    })
-
-    socket.on('teams_update', (updatedTeams: Team[]) => {
-      setTeams(updatedTeams)
-    })
-
-    socket.on('question_start', (q: ActiveQuestion) => {
-      setCurrentQuestion(q)
-      setAnswerResult(null)
-      setRacePositions([])
-      setPhase('question')
-      resetInactivityTimer()
-    })
-
-    socket.on('answer_result', (result: AnswerResult) => {
-      setAnswerResult(result)
-      setPhase('answered')
-    })
-
-    socket.on('race_update', (positions: Team[]) => {
-      setRacePositions(positions)
-    })
-
-    socket.on('question_results', (results: QuestionResults) => {
-      setRacePositions(results.leaderboard)
-      setPhase('results')
-    })
-
-    socket.on('game_over', (data: PodiumData) => {
-      setPodiumData(data)
-      setPhase('podium')
-      if (inactivityTimer.current) clearTimeout(inactivityTimer.current)
-      // No borramos localStorage: si admin resetea, el jugador vuelve al lobby
-      // automáticamente sin necesidad de recargar
-    })
-
-    // ── Primera carga: reconectar desde localStorage ───────────────────────
-    // El evento 'connect' de arriba maneja las reconexiones posteriores.
-    // Este bloque solo aplica al cargar la página por primera vez.
-    const saved = localStorage.getItem('versus_session')
-    if (saved) {
-      try {
-        const savedSession: SessionData = JSON.parse(saved)
-        registerSession(savedSession)
-        socket.emit('join_room', savedSession)
-        socket.once('join_error', () => {
-          sessionRef.current = null
-          setSession(null)
-          localStorage.removeItem('versus_session')
-          setPhase('register')
-        })
-      } catch {
-        localStorage.removeItem('versus_session')
-      }
+  // Confetti al enviar la predicción.
+  useEffect(() => {
+    if (phase !== 'done') return
+    confetti({ particleCount: 160, spread: 100, origin: { y: 0.6 } })
+    const end = Date.now() + 1600
+    let raf = 0
+    const tick = () => {
+      confetti({ particleCount: 5, angle: 60, spread: 65, origin: { x: 0 } })
+      confetti({ particleCount: 5, angle: 120, spread: 65, origin: { x: 1 } })
+      if (Date.now() < end) raf = requestAnimationFrame(tick)
     }
+    tick()
+    return () => cancelAnimationFrame(raf)
+  }, [phase])
 
-    return () => {
-      socket.disconnect()
-      if (inactivityTimer.current) clearTimeout(inactivityTimer.current)
+  // Drafts completos → picks estrictos para resolver el cuadro.
+  const picks: Picks = useMemo(() => {
+    const out: Picks = {}
+    for (const [id, d] of Object.entries(drafts)) {
+      if (d.home === '' || d.away === '') continue
+      const home = Number(d.home)
+      const away = Number(d.away)
+      out[Number(id)] = { home, away, penWinner: home === away ? d.penWinner : null }
     }
-  }, [socket])
+    return out
+  }, [drafts])
 
-  const handleRegistered = (s: SessionData) => {
-    registerSession(s)
-    setPhase('lobby')
-    resetInactivityTimer()
+  const resolved = useMemo(
+    () => (bracket ? resolveBracket(bracket, picks).list : []),
+    [bracket, picks],
+  )
+
+  const complete = isPredictionComplete(resolved)
+  const champ = champion(resolved)
+
+  const handleChange = (matchId: number, draft: Draft) =>
+    setDrafts(prev => ({ ...prev, [matchId]: draft }))
+
+  const goToRound = (i: number) => {
+    setRoundIndex(i)
+    window.scrollTo({ top: 0 })
   }
 
-  const handleAnswer = (optionIndex: number) => {
-    socket.emit('submit_answer', { optionIndex })
-    resetInactivityTimer()
+  const handleSubmit = async () => {
+    setSubmitting(true)
+    setSubmitError(null)
+    try {
+      await submitPrediction({ ...group, picks })
+      setPhase('done')
+    } catch (e) {
+      setSubmitError((e as Error).message)
+    } finally {
+      setSubmitting(false)
+    }
   }
 
-  const handleLogout = () => {
-    localStorage.removeItem('versus_session')
-    socket.emit('logout')
-    socket.disconnect()
-    window.location.reload()
+  if (loadError) {
+    return <Centered>⚠️ {loadError}</Centered>
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  if (!bracket) {
+    return <Centered>Cargando cuadro…</Centered>
+  }
 
   if (phase === 'register') {
-    return <TeamRegister socket={socket} onRegistered={handleRegistered} />
-  }
-
-  if (phase === 'podium' && podiumData) {
     return (
-      <div className="relative">
-        <Podium podium={podiumData.podium} all={podiumData.all} myTeamName={session?.teamName} />
-        <button
-          onClick={handleLogout}
-          className="fixed bottom-4 right-4 text-xs text-zinc-500 hover:text-red-400
-                     px-3 py-2 rounded-lg border border-[#2a2a3a] hover:border-red-900/50
-                     transition-colors bg-[#12121a]"
-        >
-          Salir del juego
-        </button>
-      </div>
-    )
-  }
-
-  if (phase === 'question' && currentQuestion) {
-    return (
-      <QuestionView
-        question={currentQuestion}
-        onAnswer={handleAnswer}
+      <GroupRegister
+        onDone={data => { setGroup(data); setPhase('predict') }}
       />
     )
   }
 
-  if ((phase === 'answered' || phase === 'results') && currentQuestion) {
+  if (phase === 'done') {
     return (
-      <AnsweredView
-        result={answerResult}
-        racePositions={racePositions}
-        teamName={session?.teamName ?? ''}
-      />
+      <Centered>
+        <div className="animate-bounce-in text-center">
+          <p className="text-5xl">✅</p>
+          <h2 className="mt-3 text-2xl font-bold text-white">¡Predicción enviada!</h2>
+          <p className="mt-1 text-sm text-zinc-500">
+            {group.groupName || group.members.join(', ')} — le llegó al admin.
+          </p>
+          {champ && <p className="mt-3 text-2xl text-emerald-400">Tu campeón: <b>{withFlag(champ)}</b> 🏆</p>}
+        </div>
+      </Centered>
     )
   }
+
+  // ── phase === 'predict' ─────────────────────────────────────────────────────
+  const round = bracket.rounds[roundIndex]
+  const isLastRound = roundIndex === bracket.rounds.length - 1
+  const roundMatches = resolved.filter(m => m.round === round.id)
+  const missing = roundPending(resolved, round.id).length
+  const roundReady = isRoundComplete(resolved, round.id)
 
   return (
-    <div className="relative">
-      <WaitingLobby
-        teamName={session?.teamName ?? ''}
-        teams={teams}
-      />
-      <button
-        onClick={handleLogout}
-        className="fixed bottom-4 right-4 text-xs text-zinc-600 hover:text-red-400
-                   px-3 py-2 rounded-lg border border-[#2a2a3a] hover:border-red-900/50
-                   transition-colors bg-[#12121a]"
+    <div className="flex min-h-dvh flex-col p-4">
+      <header className="mb-3 flex items-end justify-between gap-4">
+        <div className="min-w-0">
+          <p className="truncate text-sm text-zinc-500">
+            {group.groupName || 'Tu predicción'} · {group.members.join(' · ')}
+          </p>
+          <h1 className="text-3xl font-bold uppercase tracking-wide text-emerald-400 md:text-4xl">
+            {round.name}
+          </h1>
+        </div>
+        <p className="shrink-0 text-right text-sm text-zinc-500">
+          Ronda {roundIndex + 1} de {bracket.rounds.length}
+        </p>
+      </header>
+
+      <div
+        className="grid flex-1 gap-4 overflow-y-auto py-2"
+        style={{
+          gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))',
+          gridAutoRows: 'minmax(140px, 1fr)',
+        }}
       >
-        Salir
-      </button>
+        {roundMatches.map(match => (
+          <MatchCard
+            key={match.id}
+            match={match}
+            editable
+            size="lg"
+            draft={drafts[match.id]}
+            onChange={d => handleChange(match.id, d)}
+          />
+        ))}
+      </div>
+
+      <div className="sticky bottom-0 mt-4 flex items-center justify-between gap-3
+                      border-t border-[#2a2a3a] bg-[#0a0a0f]/95 py-3 backdrop-blur">
+        <button
+          onClick={() => goToRound(roundIndex - 1)}
+          disabled={roundIndex === 0}
+          className="rounded-lg border border-[#2a2a3a] px-5 py-2.5 text-base text-zinc-300
+                     hover:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-30"
+        >
+          ← Atrás
+        </button>
+
+        <p className="min-w-0 flex-1 truncate text-center text-base text-zinc-400">
+          {roundReady
+            ? (isLastRound
+                ? <>Campeón: <b className="text-emerald-400">{withFlag(champ)}</b> 🏆</>
+                : 'Ronda completa')
+            : `Faltan ${missing} resultado${missing === 1 ? '' : 's'}`}
+        </p>
+
+        {isLastRound ? (
+          <div className="flex items-center gap-2">
+            {submitError && <span className="text-xs text-red-400">{submitError}</span>}
+            <button
+              onClick={handleSubmit}
+              disabled={!complete || submitting}
+              className="rounded-lg bg-emerald-500 px-6 py-2.5 text-base font-semibold text-black
+                         transition-colors hover:bg-emerald-400
+                         disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {submitting ? 'Enviando…' : 'Finalizar y enviar'}
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => goToRound(roundIndex + 1)}
+            disabled={!roundReady}
+            className="rounded-lg bg-emerald-500 px-6 py-2.5 text-base font-semibold text-black
+                       transition-colors hover:bg-emerald-400
+                       disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Siguiente →
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function Centered({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex min-h-dvh items-center justify-center p-4 text-zinc-400">
+      {children}
     </div>
   )
 }

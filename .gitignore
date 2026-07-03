@@ -3,3 +3,7 @@ dist/
 .env
 *.log
 battle-group/pnpm-lock.yaml
+
+# Predicciones enviadas en runtime (datos del evento, no del repo)
+server/predictions.json
+server/predictions.json.tmp
