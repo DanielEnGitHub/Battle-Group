@@ -69,8 +69,8 @@ export interface QuestionResults {
 
 export interface PodiumData {
   podium: Team[];
-  all: Team[];
-  stage: number; // revealed steps: one per podium place (3rd → 1st), then the full table
+  standings?: Team[]; // full table, sent to the admin only
+  stage: number;      // revealed steps: one per podium place (3rd → 1st), then a final step
   totalPoints: number;
 }
 

@@ -116,7 +116,6 @@ body {
     box-shadow: 0 4px 0 var(--color-sky-dark), 0 10px 18px -10px rgba(10, 20, 60, 0.5);
   }
   .row-card .row-score { color: var(--color-ocean); }
-  .row-me .row-score    { color: white; }
 
   /* Chunky 3D buttons */
   .btn {

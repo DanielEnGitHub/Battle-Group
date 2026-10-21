@@ -131,9 +131,15 @@ function playerQuestionPayload(team, q, index) {
   return { ...baseQuestionPayload(q, index), options: order.map(i => q.options[i]) };
 }
 
-function podiumPayload() {
-  const all = game.finalStandings;
-  return { podium: all.slice(0, 3), all, stage: game.podiumStage, totalPoints: game.totalPoints };
+// Players only see the top 3; the full table goes to the admin to record grades
+function podiumPayload({ forAdmin }) {
+  const standings = game.finalStandings;
+  return {
+    podium: standings.slice(0, 3),
+    ...(forAdmin ? { standings } : {}),
+    stage: game.podiumStage,
+    totalPoints: game.totalPoints,
+  };
 }
 
 // One step per podium place (3rd → 1st) plus a final step for the full table
@@ -192,7 +198,8 @@ function advanceQuestion() {
     game.phase = 'podium';
     game.finalStandings = getTeamsSorted();
     game.podiumStage = 0;
-    io.emit('game_over', podiumPayload());
+    io.to('admin').emit('game_over', podiumPayload({ forAdmin: true }));
+    io.to('players').emit('game_over', podiumPayload({ forAdmin: false }));
     return;
   }
 
@@ -292,7 +299,7 @@ io.on('connection', (socket) => {
         socket.emit('question_results', { ...resultsPayload(), correctIndex: q.correctIndex });
       }
     } else if (game.phase === 'podium') {
-      socket.emit('game_over', podiumPayload());
+      socket.emit('game_over', podiumPayload({ forAdmin: true }));
     }
     console.log('Admin conectado');
   });
@@ -424,7 +431,7 @@ io.on('connection', (socket) => {
         socket.emit('question_results', playerResultsPayload(team, q));
       }
     } else if (game.phase === 'podium') {
-      socket.emit('game_over', podiumPayload());
+      socket.emit('game_over', podiumPayload({ forAdmin: false }));
     }
 
     io.emit('teams_update', getTeamsSorted());

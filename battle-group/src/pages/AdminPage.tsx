@@ -125,7 +125,7 @@ export default function AdminPage() {
       <>
         <Podium
           podium={podiumData.podium}
-          all={podiumData.all}
+          standings={podiumData.standings}
           stage={podiumData.stage}
           totalPoints={podiumData.totalPoints}
         />

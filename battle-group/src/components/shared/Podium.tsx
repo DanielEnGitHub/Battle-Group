@@ -22,26 +22,23 @@ const DISPLAY_ORDER: Rank[] = [2, 1, 3]
 
 interface Props {
   podium: Team[]
-  all: Team[]
   stage: number // controlled by the admin, synced to every device
   totalPoints: number
+  standings?: Team[] // full table, admin only (used to record grades)
   myTeamName?: string
 }
 
-export default function Podium({ podium, all, stage, totalPoints, myTeamName }: Props) {
-  // Places are revealed from the lowest present rank up to 1st, then the full table
+export default function Podium({ podium, stage, totalPoints, standings, myTeamName }: Props) {
+  // Places are revealed from the lowest present rank up to 1st, then the final step
   const places = podium.length
   const revealStageOf = (rank: Rank) => places - rank + 1
   const winnerRevealed = places > 0 && stage >= revealStageOf(1)
-  const listVisible = stage > places
+  const finished = stage > places
   const lastRevealed = (places - stage + 1) as Rank
 
   const caption = stage === 0
     ? 'Preparando el podio...'
-    : listVisible ? '¡Buen juego a todos!' : RANK_CAPTIONS[lastRevealed]
-
-  const myIndex = myTeamName ? all.findIndex(t => t.name === myTeamName) : -1
-  const me = myIndex >= 0 ? all[myIndex] : undefined
+    : finished ? '¡Buen juego a todos!' : RANK_CAPTIONS[lastRevealed]
 
   return (
     <div className="min-h-dvh flex flex-col items-center px-4 pt-10 pb-28 overflow-hidden">
@@ -111,24 +108,9 @@ export default function Podium({ podium, all, stage, totalPoints, myTeamName }: 
         })}
       </div>
 
-      {listVisible && (
-        <div className="w-full max-w-md space-y-4 animate-fade-slide-up">
-          {me && (
-            <div className="panel p-5 text-center">
-              <p className="text-ink-soft">Tu posición final</p>
-              <p className="font-display text-5xl text-highlight mt-1">#{myIndex + 1}</p>
-              <p className="text-ink-soft mt-1">
-                de {all.length} jugadores · {formatScore(me.score)} de {formatScore(totalPoints)} pts
-              </p>
-            </div>
-          )}
-          <Leaderboard
-            teams={all}
-            highlightName={myTeamName}
-            limit={10}
-            maxScore={totalPoints}
-            title="Clasificación final"
-          />
+      {finished && standings && (
+        <div className="w-full max-w-md animate-fade-slide-up">
+          <Leaderboard teams={standings} maxScore={totalPoints} title="Clasificación final" />
         </div>
       )}
     </div>

@@ -189,7 +189,6 @@ export default function PlayerPage() {
       <>
         <Podium
           podium={podiumData.podium}
-          all={podiumData.all}
           stage={podiumData.stage}
           totalPoints={podiumData.totalPoints}
           myTeamName={session?.teamName}
