@@ -185,6 +185,8 @@ export default function PlayerPage() {
   }
 
   if (phase === 'podium' && podiumData) {
+    // Players can only leave once the admin has revealed the whole podium
+    const podiumFinished = podiumData.stage > podiumData.podium.length
     return (
       <>
         <Podium
@@ -193,7 +195,7 @@ export default function PlayerPage() {
           totalPoints={podiumData.totalPoints}
           myTeamName={session?.teamName}
         />
-        {logoutButton('Salir del juego')}
+        {podiumFinished && logoutButton('Salir del juego')}
       </>
     )
   }
@@ -223,7 +225,7 @@ export default function PlayerPage() {
   return (
     <>
       <WaitingLobby teamName={session?.teamName ?? ''} teams={teams} />
-      {logoutButton('Salir')}
+      {logoutButton('Salir del juego')}
     </>
   )
 }
