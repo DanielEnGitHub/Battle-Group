@@ -28,7 +28,6 @@ export default function AdminPage() {
   const [currentQuestion, setCurrentQuestion] = useState<ActiveQuestion | null>(null)
   const [answersCount,    setAnswersCount]    = useState(0)
   const [questionResults, setQuestionResults] = useState<QuestionResults | null>(null)
-  const [leaderboard,     setLeaderboard]     = useState<Team[]>([])
   const [podiumData,      setPodiumData]      = useState<PodiumData | null>(null)
   const [joinUrls,        setJoinUrls]        = useState<string[]>([])
 
@@ -70,17 +69,18 @@ export default function AdminPage() {
       setAnswersCount(count)
     })
 
-    socket.on('race_update', (positions: Team[]) => setLeaderboard(positions))
-
     socket.on('question_results', (results: QuestionResults) => {
       setQuestionResults(results)
-      setLeaderboard(results.leaderboard)
       setPhase('results')
     })
 
     socket.on('game_over', (data: PodiumData) => {
       setPodiumData(data)
       setPhase('podium')
+    })
+
+    socket.on('podium_stage', (stage: number) => {
+      setPodiumData(prev => (prev ? { ...prev, stage } : prev))
     })
 
     return () => { socket.disconnect() }
@@ -93,11 +93,12 @@ export default function AdminPage() {
   const handleStart         = (config: GameConfig) => emit('start_game', config)
   const handleNextQuestion  = ()                   => emit('next_question')
   const handleRevealResults = ()                   => emit('reveal_results')
+  const handlePodiumNext    = ()                   => emit('podium_next')
+
   const backToQuizManager = () => {
     setPhase('quiz-manager')
     setCurrentQuestion(null)
     setQuestionResults(null)
-    setLeaderboard([])
     setPodiumData(null)
     setAnswersCount(0)
   }
@@ -118,12 +119,23 @@ export default function AdminPage() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   if (phase === 'podium' && podiumData) {
+    // One step per podium place, plus the final step for the full table
+    const podiumFinished = podiumData.stage > podiumData.podium.length
     return (
       <>
-        <Podium podium={podiumData.podium} all={podiumData.all} />
+        <Podium
+          podium={podiumData.podium}
+          all={podiumData.all}
+          stage={podiumData.stage}
+          totalPoints={podiumData.totalPoints}
+        />
         <div className="fixed bottom-5 right-5 z-40 flex gap-3">
-          <button onClick={handleReset} className="btn">Nueva partida</button>
-          <button onClick={handleEnd} className="btn">Terminar</button>
+          {podiumFinished ? (
+            <button onClick={handleReset} className="btn">Nueva partida</button>
+          ) : (
+            <button onClick={handlePodiumNext} className="btn btn-lg animate-glow">Siguiente</button>
+          )}
+          <button onClick={handleEnd} className="btn self-end">Terminar</button>
         </div>
       </>
     )
@@ -165,9 +177,8 @@ export default function AdminPage() {
       phase={phase as 'question' | 'results'}
       question={currentQuestion}
       answersCount={answersCount}
-      totalTeams={teams.length}
+      teams={teams}
       questionResults={questionResults}
-      leaderboard={leaderboard.length ? leaderboard : teams}
       onRevealResults={handleRevealResults}
       onNextQuestion={handleNextQuestion}
       onEnd={handleEnd}

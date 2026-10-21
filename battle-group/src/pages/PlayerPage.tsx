@@ -44,7 +44,6 @@ export default function PlayerPage() {
   const [answerResult,    setAnswerResult]    = useState<AnswerResult | null>(null)
   const [myAnswerIndex,   setMyAnswerIndex]   = useState<number | null>(null)
   const [correctIndex,    setCorrectIndex]    = useState<number | null>(null)
-  const [leaderboard,     setLeaderboard]     = useState<Team[]>([])
   const [podiumData,      setPodiumData]      = useState<PodiumData | null>(null)
   const [notice,          setNotice]          = useState<string | null>(null)
 
@@ -61,7 +60,6 @@ export default function PlayerPage() {
     localStorage.removeItem(SESSION_KEY)
     setCurrentQuestion(null)
     clearRound()
-    setLeaderboard([])
     setPodiumData(null)
     setPhase(nextPhase)
   }
@@ -92,7 +90,6 @@ export default function PlayerPage() {
         setPhase('lobby')
         setCurrentQuestion(null)
         clearRound()
-        setLeaderboard([])
         setPodiumData(null)
       }
     })
@@ -111,10 +108,7 @@ export default function PlayerPage() {
       setPhase('answered')
     })
 
-    socket.on('race_update', (positions: Team[]) => setLeaderboard(positions))
-
     socket.on('question_results', (results: QuestionResults) => {
-      setLeaderboard(results.leaderboard)
       setCorrectIndex(results.correctIndex >= 0 ? results.correctIndex : null)
       setPhase('results')
     })
@@ -123,6 +117,11 @@ export default function PlayerPage() {
       // Session is kept: if the admin starts a new game, the player returns to the lobby
       setPodiumData(data)
       setPhase('podium')
+    })
+
+    // The admin reveals the podium step by step
+    socket.on('podium_stage', (stage: number) => {
+      setPodiumData(prev => (prev ? { ...prev, stage } : prev))
     })
 
     return () => { socket.disconnect() }
@@ -188,7 +187,13 @@ export default function PlayerPage() {
   if (phase === 'podium' && podiumData) {
     return (
       <>
-        <Podium podium={podiumData.podium} all={podiumData.all} myTeamName={session?.teamName} />
+        <Podium
+          podium={podiumData.podium}
+          all={podiumData.all}
+          stage={podiumData.stage}
+          totalPoints={podiumData.totalPoints}
+          myTeamName={session?.teamName}
+        />
         {logoutButton('Salir del juego')}
       </>
     )
@@ -212,8 +217,6 @@ export default function PlayerPage() {
         result={answerResult}
         myAnswerIndex={myAnswerIndex}
         correctIndex={correctIndex}
-        leaderboard={leaderboard}
-        teamName={session?.teamName ?? ''}
       />
     )
   }

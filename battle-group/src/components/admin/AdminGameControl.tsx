@@ -2,16 +2,14 @@ import type { ActiveQuestion, QuestionResults, Team } from '../../types/game'
 import { useCountdown } from '../../hooks/useCountdown'
 import { assetUrl, formatSeconds, optionLetter } from '../../utils/format'
 import Avatar from '../shared/Avatar'
-import Leaderboard from '../shared/Leaderboard'
 import TimerRing from '../shared/TimerRing'
 
 interface Props {
   phase: 'question' | 'results'
   question: ActiveQuestion
   answersCount: number
-  totalTeams: number
+  teams: Team[]
   questionResults: QuestionResults | null
-  leaderboard: Team[]
   onRevealResults: () => void
   onNextQuestion: () => void
   onEnd: () => void
@@ -27,13 +25,13 @@ function ResultTile({ value, label, color }: { value: number; label: string; col
 }
 
 // Remount per question (key by index) so the countdown restarts.
+// Standings are intentionally not shown: this screen is usually projected for the class.
 export default function AdminGameControl({
   phase,
   question,
   answersCount,
-  totalTeams,
+  teams,
   questionResults,
-  leaderboard,
   onRevealResults,
   onNextQuestion,
   onEnd,
@@ -42,6 +40,7 @@ export default function AdminGameControl({
   const msLeft = useCountdown(question.timeLeftMs ?? totalMs)
 
   const revealed = phase === 'results'
+  const totalTeams = teams.length
   const everyoneAnswered = totalTeams > 0 && answersCount >= totalTeams
   const readyToReveal = everyoneAnswered || msLeft === 0
   const isLast = question.index + 1 >= question.total
@@ -51,7 +50,7 @@ export default function AdminGameControl({
   const correctAnswers = answers.filter(a => a.correct)
   const missedCount = Math.max(0, totalTeams - answers.length)
   const fastest = [...correctAnswers].sort((a, b) => a.timeMs - b.timeMs).slice(0, 3)
-  const joinIndexOf = (name: string) => leaderboard.find(t => t.name === name)?.joinIndex ?? 0
+  const joinIndexOf = (name: string) => teams.find(t => t.name === name)?.joinIndex ?? 0
 
   return (
     <div className="min-h-dvh w-full max-w-7xl mx-auto px-4 md:px-8 py-6 flex flex-col gap-5">
@@ -157,8 +156,6 @@ export default function AdminGameControl({
               Revelar respuesta
             </button>
           )}
-
-          <Leaderboard teams={leaderboard} limit={8} />
         </aside>
       </div>
     </div>

@@ -1,11 +1,14 @@
 import { useState } from 'react'
 import type { GameConfig, Team } from '../../types/game'
+import { formatScore } from '../../utils/format'
 import Avatar from '../shared/Avatar'
 
 const TIME_PRESETS = [10, 15, 20, 30, 45, 60]
 const COUNT_PRESETS = [5, 10, 15]
+const POINTS_PRESETS = [10, 12, 20, 100]
 const MIN_SECONDS = 5
 const MAX_SECONDS = 300
+const MAX_POINTS = 1000
 
 interface Props {
   teams: Team[]
@@ -22,10 +25,12 @@ const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(mi
 export default function AdminLobby({ teams, quizName, bankSize, joinUrls, onStart, onBack, onEnd }: Props) {
   const [questionCount, setQuestionCount] = useState(() => Math.min(10, bankSize))
   const [timeLimit,     setTimeLimit]     = useState(20)
+  const [totalPoints,   setTotalPoints]   = useState(12)
   const [copied,        setCopied]        = useState(false)
 
   const count   = clamp(questionCount || 1, 1, Math.max(1, bankSize))
   const seconds = clamp(timeLimit || MIN_SECONDS, MIN_SECONDS, MAX_SECONDS)
+  const points  = clamp(totalPoints || 1, 1, MAX_POINTS)
   const totalMinutes = Math.max(1, Math.round((count * seconds) / 60))
   const canStart = teams.length > 0 && bankSize > 0
   const mainUrl = joinUrls[0]
@@ -133,8 +138,39 @@ export default function AdminLobby({ teams, quizName, bankSize, joinUrls, onStar
             </div>
           </div>
 
-          <div className="rounded-2xl bg-tile px-4 py-3 text-ink-soft">
-            {count} preguntas · {seconds} s cada una · unos {totalMinutes} min
+          <div>
+            <label htmlFor="total-points" className="block mb-3">Puntos del quiz</label>
+            <div className="flex flex-wrap items-center gap-2">
+              {POINTS_PRESETS.map(p => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setTotalPoints(p)}
+                  className={`chip ${points === p ? 'chip-active' : ''}`}
+                >
+                  {p}
+                </button>
+              ))}
+              <input
+                id="total-points"
+                type="number"
+                min={1}
+                max={MAX_POINTS}
+                step="any"
+                value={totalPoints}
+                onChange={e => setTotalPoints(Number(e.target.value))}
+                onBlur={() => setTotalPoints(points)}
+                className="game-input w-24 text-center ml-1"
+              />
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-tile px-4 py-3 text-ink-soft space-y-1">
+            <p>{count} preguntas · {seconds} s cada una · unos {totalMinutes} min</p>
+            <p>
+              Vale <span className="text-white">{formatScore(points)} pts</span> en total ·
+              cada respuesta correcta suma <span className="text-white">{formatScore(points / count)} pts</span>
+            </p>
           </div>
 
           <p className="text-sm text-ink-soft -mt-2">
@@ -143,7 +179,7 @@ export default function AdminLobby({ teams, quizName, bankSize, joinUrls, onStar
 
           <div className="mt-auto pt-2">
             <button
-              onClick={() => onStart({ questionCount: count, timeLimit: seconds })}
+              onClick={() => onStart({ questionCount: count, timeLimit: seconds, totalPoints: points })}
               disabled={!canStart}
               className="btn btn-lg w-full"
             >

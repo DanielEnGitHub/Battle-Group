@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react'
 import type { Team } from '../../types/game'
 import { formatScore } from '../../utils/format'
 import Avatar from './Avatar'
@@ -13,34 +12,39 @@ const BLOCKS: Record<Rank, { top: string; bottom: string; edge: string; fg: stri
   2: { top: '#f4f6fd', bottom: '#c3cbe3', edge: '#8a93b5', fg: '#434b6e' },
   3: { top: '#ffc58f', bottom: '#e8833a', edge: '#9c4a14', fg: '#5a2a07' },
 }
+const RANK_CAPTIONS: Record<Rank, string> = {
+  3: 'Tercer lugar',
+  2: 'Segundo lugar',
+  1: '¡Y el campeón es...!',
+}
 // Visual order: 2nd left, 1st center, 3rd right
 const DISPLAY_ORDER: Rank[] = [2, 1, 3]
-// Stage at which each rank is revealed: 3rd first, then 2nd, then 1st
-const REVEAL_STAGE: Record<Rank, number> = { 3: 1, 2: 2, 1: 3 }
-const STAGE_TIMES_MS = [1200, 3000, 5000, 6800]
-const STAGE_CAPTIONS = ['', 'Tercer lugar', 'Segundo lugar', '¡Y el campeón es...!', '¡Buen juego a todos!']
 
 interface Props {
   podium: Team[]
   all: Team[]
+  stage: number // controlled by the admin, synced to every device
+  totalPoints: number
   myTeamName?: string
 }
 
-export default function Podium({ podium, all, myTeamName }: Props) {
-  const [stage, setStage] = useState(0)
+export default function Podium({ podium, all, stage, totalPoints, myTeamName }: Props) {
+  // Places are revealed from the lowest present rank up to 1st, then the full table
+  const places = podium.length
+  const revealStageOf = (rank: Rank) => places - rank + 1
+  const winnerRevealed = places > 0 && stage >= revealStageOf(1)
+  const listVisible = stage > places
+  const lastRevealed = (places - stage + 1) as Rank
 
-  useEffect(() => {
-    const timers = STAGE_TIMES_MS.map((ms, i) => setTimeout(() => setStage(i + 1), ms))
-    return () => timers.forEach(clearTimeout)
-  }, [])
+  const caption = stage === 0
+    ? 'Preparando el podio...'
+    : listVisible ? '¡Buen juego a todos!' : RANK_CAPTIONS[lastRevealed]
 
-  const myRank = myTeamName ? all.findIndex(t => t.name === myTeamName) + 1 : 0
-  const winnerRevealed = stage >= REVEAL_STAGE[1]
-  const listVisible = stage >= STAGE_TIMES_MS.length
-  const caption = STAGE_CAPTIONS[stage]
+  const myIndex = myTeamName ? all.findIndex(t => t.name === myTeamName) : -1
+  const me = myIndex >= 0 ? all[myIndex] : undefined
 
   return (
-    <div className="min-h-dvh flex flex-col items-center px-4 pt-10 pb-24 overflow-hidden">
+    <div className="min-h-dvh flex flex-col items-center px-4 pt-10 pb-28 overflow-hidden">
       {winnerRevealed && <Confetti />}
 
       <header className="text-center mb-8 animate-bounce-in">
@@ -57,7 +61,7 @@ export default function Podium({ podium, all, myTeamName }: Props) {
           const team = podium[rank - 1]
           if (!team) return <div key={rank} className="w-24 md:w-40" />
 
-          const isRevealed = stage >= REVEAL_STAGE[rank]
+          const isRevealed = stage >= revealStageOf(rank)
           const isMe = team.name === myTeamName
           const block = BLOCKS[rank]
 
@@ -81,7 +85,9 @@ export default function Podium({ podium, all, myTeamName }: Props) {
                 >
                   {team.name}{isMe && ' (tú)'}
                 </span>
-                <span className="pill text-sm">{formatScore(team.score)} pts</span>
+                <span className="pill text-sm">
+                  {formatScore(team.score)} / {formatScore(totalPoints)} pts
+                </span>
               </div>
 
               <div
@@ -90,7 +96,7 @@ export default function Podium({ podium, all, myTeamName }: Props) {
                 }`}
                 style={isRevealed ? {
                   background: `linear-gradient(180deg, ${block.top}, ${block.bottom})`,
-                  boxShadow: `inset 0 -10px 0 ${block.edge}, inset 0 4px 0 rgba(255,255,255,0.6), 0 14px 30px -10px rgba(20,10,70,0.5)`,
+                  boxShadow: `inset 0 -10px 0 ${block.edge}, inset 0 4px 0 rgba(255,255,255,0.6), 0 14px 30px -10px rgba(10,20,60,0.5)`,
                 } : undefined}
               >
                 <span
@@ -107,14 +113,22 @@ export default function Podium({ podium, all, myTeamName }: Props) {
 
       {listVisible && (
         <div className="w-full max-w-md space-y-4 animate-fade-slide-up">
-          {myRank > 0 && (
+          {me && (
             <div className="panel p-5 text-center">
               <p className="text-ink-soft">Tu posición final</p>
-              <p className="font-display text-5xl text-highlight mt-1">#{myRank}</p>
-              <p className="text-ink-soft mt-1">de {all.length} jugadores</p>
+              <p className="font-display text-5xl text-highlight mt-1">#{myIndex + 1}</p>
+              <p className="text-ink-soft mt-1">
+                de {all.length} jugadores · {formatScore(me.score)} de {formatScore(totalPoints)} pts
+              </p>
             </div>
           )}
-          <Leaderboard teams={all} highlightName={myTeamName} limit={10} title="Clasificación final" />
+          <Leaderboard
+            teams={all}
+            highlightName={myTeamName}
+            limit={10}
+            maxScore={totalPoints}
+            title="Clasificación final"
+          />
         </div>
       )}
     </div>

@@ -12,6 +12,7 @@ interface Props {
   teams: Team[]
   highlightName?: string
   limit?: number
+  maxScore?: number
   title?: string
 }
 
@@ -20,9 +21,10 @@ interface RowProps {
   rank: number
   isMe: boolean
   delayMs: number
+  maxScore?: number
 }
 
-function Row({ team, rank, isMe, delayMs }: RowProps) {
+function Row({ team, rank, isMe, delayMs, maxScore }: RowProps) {
   const badge = RANK_BADGES[rank - 1]
   return (
     <li
@@ -44,12 +46,15 @@ function Row({ team, rank, isMe, delayMs }: RowProps) {
         {team.name}
         {isMe && <span className="opacity-80 ml-1.5 text-sm">(tú)</span>}
       </span>
-      <span className="row-score font-display text-lg tabular-nums">{formatScore(team.score)}</span>
+      <span className="row-score font-display text-lg tabular-nums">
+        {formatScore(team.score)}
+        {maxScore !== undefined && <span className="text-sm opacity-70"> / {formatScore(maxScore)}</span>}
+      </span>
     </li>
   )
 }
 
-export default function Leaderboard({ teams, highlightName, limit, title = 'Clasificación' }: Props) {
+export default function Leaderboard({ teams, highlightName, limit, maxScore, title = 'Clasificación' }: Props) {
   const shown = limit ? teams.slice(0, limit) : teams
   const myIndex = highlightName ? teams.findIndex(t => t.name === highlightName) : -1
   const meOutside = myIndex >= shown.length
@@ -62,12 +67,12 @@ export default function Leaderboard({ teams, highlightName, limit, title = 'Clas
       ) : (
         <ol className="space-y-2">
           {shown.map((t, i) => (
-            <Row key={t.sessionId} team={t} rank={i + 1} isMe={i === myIndex} delayMs={i * 50} />
+            <Row key={t.sessionId} team={t} rank={i + 1} isMe={i === myIndex} delayMs={i * 50} maxScore={maxScore} />
           ))}
           {meOutside && (
             <>
               <li className="text-center text-ink-soft leading-none" aria-hidden>···</li>
-              <Row team={teams[myIndex]} rank={myIndex + 1} isMe delayMs={shown.length * 50} />
+              <Row team={teams[myIndex]} rank={myIndex + 1} isMe delayMs={shown.length * 50} maxScore={maxScore} />
             </>
           )}
         </ol>

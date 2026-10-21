@@ -34,6 +34,8 @@ function writeQuizzes(data) {
 
 // ── Game state ────────────────────────────────────────────────────────────────
 
+const DEFAULT_TOTAL_POINTS = 12;
+
 function createInitialState() {
   return {
     phase: 'lobby',
@@ -44,6 +46,9 @@ function createInitialState() {
     questionStartTime: null,
     answers: {},
     nextJoinIndex: 0,
+    totalPoints: DEFAULT_TOTAL_POINTS, // max score; split evenly across the round's questions
+    finalStandings: [], // frozen when the game ends so the podium can't shift
+    podiumStage: 0,     // 0 = hidden, then one step per podium place, last step = full table
   };
 }
 
@@ -55,6 +60,15 @@ const disconnectTimers = {};
 
 // Tolerates network latency between the client timer hitting zero and the answer arriving.
 const LATE_ANSWER_GRACE_MS = 1500;
+// Short pause after the last answer so that player sees their confirmation before the reveal.
+const ALL_ANSWERED_DELAY_MS = 1000;
+
+// Closes the current question automatically (time over or everyone answered).
+let questionTimer = null;
+function clearQuestionTimer() {
+  clearTimeout(questionTimer);
+  questionTimer = null;
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -87,9 +101,9 @@ function shuffle(items) {
   return copy;
 }
 
-function clampInt(value, min, max, fallback) {
-  const n = Number.parseInt(value, 10);
-  if (Number.isNaN(n)) return fallback;
+function clampNumber(value, min, max, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
   return Math.min(max, Math.max(min, n));
 }
 
@@ -118,8 +132,13 @@ function playerQuestionPayload(team, q, index) {
 }
 
 function podiumPayload() {
-  const byScore = getTeamsSorted();
-  return { podium: byScore.slice(0, 3), all: byScore };
+  const all = game.finalStandings;
+  return { podium: all.slice(0, 3), all, stage: game.podiumStage, totalPoints: game.totalPoints };
+}
+
+// One step per podium place (3rd → 1st) plus a final step for the full table
+function podiumMaxStage() {
+  return game.finalStandings.slice(0, 3).length + 1;
 }
 
 function timeLeftMs(q) {
@@ -133,19 +152,46 @@ function resultsPayload() {
       correct: a.correct,
       timeMs: a.timeMs,
     })),
-    leaderboard: getTeamsSorted(),
   };
 }
 
+// Players only get their own correct option; standings stay hidden until the podium
 function playerResultsPayload(team, q) {
-  return { ...resultsPayload(), correctIndex: ensureOptionOrder(team, q).indexOf(q.correctIndex) };
+  return { correctIndex: ensureOptionOrder(team, q).indexOf(q.correctIndex) };
+}
+
+function revealResults() {
+  if (game.phase !== 'question') return;
+  clearQuestionTimer();
+  game.phase = 'results';
+  const q = game.questions[game.currentQuestionIndex];
+
+  io.to('admin').emit('question_results', { ...resultsPayload(), correctIndex: q.correctIndex });
+  Object.values(game.teams).forEach(team => {
+    io.to(team.socketId).emit('question_results', playerResultsPayload(team, q));
+  });
+}
+
+function connectedTeamIds() {
+  return Object.keys(game.teams).filter(sid => !disconnectTimers[sid]);
+}
+
+function revealIfEveryoneAnswered() {
+  if (game.phase !== 'question') return;
+  const connected = connectedTeamIds();
+  if (connected.length === 0 || !connected.every(sid => game.answers[sid])) return;
+  clearQuestionTimer();
+  questionTimer = setTimeout(revealResults, ALL_ANSWERED_DELAY_MS);
 }
 
 function advanceQuestion() {
+  clearQuestionTimer();
   const nextIdx = game.currentQuestionIndex + 1;
 
   if (nextIdx >= game.questions.length) {
     game.phase = 'podium';
+    game.finalStandings = getTeamsSorted();
+    game.podiumStage = 0;
     io.emit('game_over', podiumPayload());
     return;
   }
@@ -156,6 +202,7 @@ function advanceQuestion() {
   game.questionStartTime = Date.now();
 
   const q = game.questions[nextIdx];
+  questionTimer = setTimeout(revealResults, q.timeLimit * 1000 + LATE_ANSWER_GRACE_MS);
   Object.values(game.teams).forEach(team => {
     team.optionOrder = null;
     io.to(team.socketId).emit('question_start', playerQuestionPayload(team, q, nextIdx));
@@ -241,7 +288,6 @@ io.on('connection', (socket) => {
         timeLeftMs: timeLeftMs(q),
       });
       socket.emit('answer_received', { answersCount: Object.keys(game.answers).length });
-      socket.emit('race_update', getTeamsSorted());
       if (game.phase === 'results') {
         socket.emit('question_results', { ...resultsPayload(), correctIndex: q.correctIndex });
       }
@@ -262,12 +308,13 @@ io.on('connection', (socket) => {
     io.emit('game_state', getStateSnapshot());
   });
 
-  socket.on('start_game', ({ questionCount, timeLimit } = {}) => {
+  socket.on('start_game', ({ questionCount, timeLimit, totalPoints } = {}) => {
     if (!game.currentQuiz || game.phase !== 'lobby') return;
     const bank = game.currentQuiz.questions;
-    const count = clampInt(questionCount, 1, bank.length, bank.length);
-    const seconds = clampInt(timeLimit, 5, 300, 20);
+    const count = Math.round(clampNumber(questionCount, 1, bank.length, bank.length));
+    const seconds = Math.round(clampNumber(timeLimit, 5, 300, 20));
 
+    game.totalPoints = clampNumber(totalPoints, 1, 1000, DEFAULT_TOTAL_POINTS);
     game.questions = shuffle(bank).slice(0, count).map(q => ({ ...q, timeLimit: seconds }));
     game.currentQuestionIndex = -1;
     advanceQuestion();
@@ -278,19 +325,17 @@ io.on('connection', (socket) => {
     advanceQuestion();
   });
 
-  socket.on('reveal_results', () => {
-    if (game.phase !== 'question') return;
-    game.phase = 'results';
-    const q = game.questions[game.currentQuestionIndex];
+  socket.on('reveal_results', revealResults);
 
-    io.to('admin').emit('question_results', { ...resultsPayload(), correctIndex: q.correctIndex });
-    Object.values(game.teams).forEach(team => {
-      io.to(team.socketId).emit('question_results', playerResultsPayload(team, q));
-    });
+  socket.on('podium_next', () => {
+    if (game.phase !== 'podium' || game.podiumStage >= podiumMaxStage()) return;
+    game.podiumStage += 1;
+    io.emit('podium_stage', game.podiumStage);
   });
 
   // New game with the same players. Disconnect timers are kept so absent players still expire.
   socket.on('reset_game', () => {
+    clearQuestionTimer();
     const preservedNextJoinIndex = game.nextJoinIndex;
     const preservedTeams = Object.fromEntries(
       Object.entries(game.teams).map(([sid, team]) => [
@@ -308,6 +353,7 @@ io.on('connection', (socket) => {
 
   // Ends every player session and clears the room
   socket.on('end_session', () => {
+    clearQuestionTimer();
     Object.keys(disconnectTimers).forEach(sid => {
       clearTimeout(disconnectTimers[sid]);
       delete disconnectTimers[sid];
@@ -371,7 +417,6 @@ io.on('connection', (socket) => {
         ...playerQuestionPayload(team, q, game.currentQuestionIndex),
         timeLeftMs: timeLeftMs(q),
       });
-      socket.emit('race_update', getTeamsSorted());
       if (game.answers[socket.id]) {
         socket.emit('answer_result', game.answers[socket.id]);
       }
@@ -398,10 +443,10 @@ io.on('connection', (socket) => {
     const timeMs = Date.now() - game.questionStartTime;
     if (timeMs > q.timeLimit * 1000 + LATE_ANSWER_GRACE_MS) return;
     const correct = originalIndex === q.correctIndex;
-    const points = correct ? 12 / game.questions.length : 0;
+    const points = correct ? game.totalPoints / game.questions.length : 0;
 
     game.answers[socket.id] = { optionIndex, originalIndex, timeMs, correct, points };
-    team.score = parseFloat(Math.min(team.score + points, 12).toFixed(4));
+    team.score = parseFloat(Math.min(team.score + points, game.totalPoints).toFixed(4));
     team.totalTime += timeMs;
 
     socket.emit('answer_result', { correct, points, timeMs });
@@ -413,7 +458,7 @@ io.on('connection', (socket) => {
       totalTeams: Object.keys(game.teams).length,
     });
 
-    io.to('admin').emit('race_update', getTeamsSorted());
+    revealIfEveryoneAnswered();
   });
 
   socket.on('logout', () => {
@@ -425,6 +470,7 @@ io.on('connection', (socket) => {
     delete game.answers[socket.id];
     console.log(`[logout] ${socket.id}`);
     io.emit('teams_update', getTeamsSorted());
+    revealIfEveryoneAnswered();
   });
 
   socket.on('disconnect', () => {
@@ -438,6 +484,9 @@ io.on('connection', (socket) => {
       io.emit('teams_update', getTeamsSorted());
       console.log(`[timeout] ${team.name} removido por inactividad`);
     }, DISCONNECT_TTL);
+
+    // A dropped player shouldn't hold the question open for everyone else
+    revealIfEveryoneAnswered();
   });
 });
 

@@ -1,6 +1,5 @@
-import type { ActiveQuestion, AnswerResult, Team } from '../../types/game'
+import type { ActiveQuestion, AnswerResult } from '../../types/game'
 import { formatScore, formatSeconds } from '../../utils/format'
-import Leaderboard from '../shared/Leaderboard'
 
 interface Props {
   revealed: boolean
@@ -8,8 +7,6 @@ interface Props {
   result: AnswerResult | null
   myAnswerIndex: number | null
   correctIndex: number | null
-  leaderboard: Team[]
-  teamName: string
 }
 
 type Outcome = 'correct' | 'wrong' | 'missed'
@@ -20,15 +17,17 @@ const OUTCOME_UI: Record<Outcome, { icon: string; title: string; badge: string }
   missed:  { icon: '!', title: '¡Tiempo agotado!', badge: 'linear-gradient(180deg, #b6e2ff, var(--color-highlight-dark))' },
 }
 
-export default function AnsweredView({
-  revealed,
-  question,
-  result,
-  myAnswerIndex,
-  correctIndex,
-  leaderboard,
-  teamName,
-}: Props) {
+function WaitingLine({ label }: { label: string }) {
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-3 text-highlight">
+      <span className="font-display text-lg">{label}</span>
+      <span className="loading-dots" aria-hidden><span /><span /><span /></span>
+    </div>
+  )
+}
+
+// Standings are intentionally hidden here; they're revealed only on the podium
+export default function AnsweredView({ revealed, question, result, myAnswerIndex, correctIndex }: Props) {
   const myAnswer = myAnswerIndex !== null ? question.options[myAnswerIndex] : undefined
 
   if (!revealed) {
@@ -49,9 +48,8 @@ export default function AnsweredView({
           {result && (
             <p className="text-ink-soft text-sm mt-3">Respondiste en {formatSeconds(result.timeMs)}</p>
           )}
-          <div className="mt-6 flex flex-wrap items-center justify-center gap-3 text-highlight">
-            <span className="font-display text-lg">Esperando el resultado</span>
-            <span className="loading-dots" aria-hidden><span /><span /><span /></span>
+          <div className="mt-6">
+            <WaitingLine label="Esperando el resultado" />
           </div>
         </div>
       </div>
@@ -60,11 +58,10 @@ export default function AnsweredView({
 
   const outcome: Outcome = !result ? 'missed' : result.correct ? 'correct' : 'wrong'
   const ui = OUTCOME_UI[outcome]
-  const myRank = leaderboard.findIndex(t => t.name === teamName) + 1
   const correctText = correctIndex !== null ? question.options[correctIndex] : undefined
 
   return (
-    <div className="min-h-dvh flex flex-col items-center px-5 pt-10 pb-8 gap-5">
+    <div className="min-h-dvh flex flex-col items-center justify-center px-5 py-10 gap-6">
       <div className="text-center animate-bounce-in">
         <div
           className="mx-auto mb-3 grid place-items-center w-24 h-24 rounded-full border-[5px] border-white font-display text-5xl text-white"
@@ -78,27 +75,16 @@ export default function AnsweredView({
         )}
       </div>
 
-      <div className={`panel w-full max-w-md p-5 ${outcome === 'correct' ? 'animate-pop-in' : 'animate-shake'}`}>
-        {outcome !== 'correct' && correctText && (
-          <div className="mb-4">
-            <p className="text-ink-soft text-sm text-center mb-2">La respuesta correcta era</p>
-            <div className="answer answer-static answer-correct text-base">
-              <span className="flex-1 text-center">{correctText}</span>
-            </div>
+      {outcome !== 'correct' && correctText && (
+        <div className="panel w-full max-w-md p-5 animate-shake">
+          <p className="text-ink-soft text-sm text-center mb-2">La respuesta correcta era</p>
+          <div className="answer answer-static answer-correct text-base">
+            <span className="flex-1 text-center">{correctText}</span>
           </div>
-        )}
-        {myRank > 0 && (
-          <p className="text-center text-ink-soft">
-            Posición actual:{' '}
-            <span className="font-display text-3xl text-highlight align-middle">#{myRank}</span>
-            {' '}de {leaderboard.length}
-          </p>
-        )}
-      </div>
+        </div>
+      )}
 
-      <div className="w-full max-w-md animate-fade-slide-up" style={{ animationDelay: '200ms' }}>
-        <Leaderboard teams={leaderboard} highlightName={teamName} limit={5} />
-      </div>
+      <WaitingLine label="Espera la siguiente pregunta" />
     </div>
   )
 }

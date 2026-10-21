@@ -28,6 +28,7 @@ export interface Quiz {
 export interface GameConfig {
   questionCount: number;
   timeLimit: number;
+  totalPoints: number;
 }
 
 export interface GameStateSnapshot {
@@ -59,17 +60,18 @@ export interface AnswerResult {
 
 export interface QuestionResults {
   correctIndex: number; // index in the receiver's own option order
-  answers: Array<{
+  answers?: Array<{     // admin only
     teamName: string;
     correct: boolean;
     timeMs: number;
   }>;
-  leaderboard: Team[];
 }
 
 export interface PodiumData {
   podium: Team[];
   all: Team[];
+  stage: number; // revealed steps: one per podium place (3rd → 1st), then the full table
+  totalPoints: number;
 }
 
 export interface SessionData {
