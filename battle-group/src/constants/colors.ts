@@ -1,4 +1,6 @@
-export const CAR_COLORS = [
-  '#FF4444', '#FFD700', '#4488FF', '#44FF88',
-  '#FF8844', '#AA44FF', '#44FFFF', '#FF44AA',
+export const PLAYER_COLORS = [
+  '#e8467c', '#2fa8e0', '#ffa91f', '#3bbf6a',
+  '#e0574f', '#8b5cc7', '#20b3a6', '#f2759f',
 ]
+
+export const colorForIndex = (i: number) => PLAYER_COLORS[i % PLAYER_COLORS.length]

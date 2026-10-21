@@ -1,185 +1,165 @@
 import type { ActiveQuestion, QuestionResults, Team } from '../../types/game'
-import RaceTrack from '../shared/RaceTrack'
-
-const OPTION_LABELS = ['A', 'B', 'C', 'D']
-const OPTION_BASE   = [
-  'bg-[#E21B3C]/15 border-[#E21B3C]/30',
-  'bg-[#1368CE]/15 border-[#1368CE]/30',
-  'bg-[#D89E00]/15 border-[#D89E00]/30',
-  'bg-[#26890C]/15 border-[#26890C]/30',
-]
+import { useCountdown } from '../../hooks/useCountdown'
+import { assetUrl, formatSeconds, optionLetter } from '../../utils/format'
+import Avatar from '../shared/Avatar'
+import Leaderboard from '../shared/Leaderboard'
+import TimerRing from '../shared/TimerRing'
 
 interface Props {
   phase: 'question' | 'results'
-  currentQuestion: ActiveQuestion | null
+  question: ActiveQuestion
   answersCount: number
   totalTeams: number
   questionResults: QuestionResults | null
-  racePositions: Team[]
+  leaderboard: Team[]
   onRevealResults: () => void
   onNextQuestion: () => void
+  onEnd: () => void
 }
 
+function ResultTile({ value, label, color }: { value: number; label: string; color: string }) {
+  return (
+    <div className="rounded-2xl bg-tile py-4 text-center">
+      <p className="font-display text-5xl" style={{ color }}>{value}</p>
+      <p className="text-sm text-ink-soft mt-1">{label}</p>
+    </div>
+  )
+}
+
+// Remount per question (key by index) so the countdown restarts.
 export default function AdminGameControl({
   phase,
-  currentQuestion,
+  question,
   answersCount,
   totalTeams,
   questionResults,
-  racePositions,
+  leaderboard,
   onRevealResults,
   onNextQuestion,
+  onEnd,
 }: Props) {
+  const totalMs = question.timeLimit * 1000
+  const msLeft = useCountdown(question.timeLeftMs ?? totalMs)
+
+  const revealed = phase === 'results'
+  const everyoneAnswered = totalTeams > 0 && answersCount >= totalTeams
+  const readyToReveal = everyoneAnswered || msLeft === 0
+  const isLast = question.index + 1 >= question.total
+  const progress = ((question.index + 1) / question.total) * 100
+
+  const answers = questionResults?.answers ?? []
+  const correctAnswers = answers.filter(a => a.correct)
+  const missedCount = Math.max(0, totalTeams - answers.length)
+  const fastest = [...correctAnswers].sort((a, b) => a.timeMs - b.timeMs).slice(0, 3)
+  const joinIndexOf = (name: string) => leaderboard.find(t => t.name === name)?.joinIndex ?? 0
+
   return (
-    <div className="min-h-dvh bg-[#0a0a0f] flex flex-col md:flex-row">
-      {/* Panel izquierdo: control de pregunta */}
-      <div className="w-full md:w-[420px] flex-shrink-0 flex flex-col p-6 border-r border-[#2a2a3a]">
-
-        {currentQuestion && (
-          <>
-            {/* Header */}
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-xs text-zinc-500 uppercase tracking-widest">
-                Pregunta {currentQuestion.index + 1} / {currentQuestion.total}
-              </span>
-              <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                phase === 'question'
-                  ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                  : 'bg-zinc-700/30 text-zinc-400 border border-zinc-600/30'
-              }`}>
-                {phase === 'question' ? '● En curso' : '✓ Revelada'}
-              </span>
-            </div>
-
-            {/* Texto */}
-            <div className="bg-[#12121a] border border-[#2a2a3a] rounded-2xl p-4 mb-4">
-              <p className="text-white font-bold text-lg leading-relaxed">
-                {currentQuestion.text}
-              </p>
-            </div>
-
-            {/* Opciones */}
-            <div className="space-y-2 mb-4">
-              {currentQuestion.options.map((opt, i) => {
-                const isCorrect = currentQuestion.correctIndex === i
-                const revealed  = phase === 'results'
-                return (
-                  <div
-                    key={i}
-                    className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border text-sm
-                      ${revealed && isCorrect
-                        ? 'bg-green-500/20 border-green-500/60'
-                        : OPTION_BASE[i]
-                      }`}
-                  >
-                    <span className="font-black text-zinc-400 w-4 flex-shrink-0">
-                      {OPTION_LABELS[i]}
-                    </span>
-                    <span className={revealed && isCorrect ? 'text-green-400 font-bold' : 'text-white'}>
-                      {opt}
-                    </span>
-                    {revealed && isCorrect && (
-                      <span className="ml-auto text-green-400">✓ Correcta</span>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          </>
-        )}
-
-        {/* Contador de respuestas */}
-        {phase === 'question' && (
-          <div className="bg-[#12121a] border border-[#2a2a3a] rounded-xl p-4 mb-4 text-center">
-            <p className="text-4xl font-black text-white tabular-nums">
-              {answersCount}
-              <span className="text-zinc-600 text-2xl">/{totalTeams}</span>
-            </p>
-            <p className="text-zinc-500 text-xs mt-1 uppercase tracking-widest">
-              equipos respondieron
-            </p>
-            {/* Barra de progreso */}
-            <div className="mt-3 h-1.5 bg-[#2a2a3a] rounded-full overflow-hidden">
-              <div
-                className="h-full bg-yellow-400 rounded-full transition-all duration-500"
-                style={{ width: totalTeams > 0 ? `${(answersCount / totalTeams) * 100}%` : '0%' }}
-              />
-            </div>
+    <div className="min-h-dvh w-full max-w-7xl mx-auto px-4 md:px-8 py-6 flex flex-col gap-5">
+      <header className="flex items-center gap-5">
+        <div className="flex-1 min-w-0">
+          <p className="font-display text-2xl mb-2">
+            Pregunta {question.index + 1} de {question.total}
+          </p>
+          <div className="bar-track max-w-lg">
+            <div className="bar-fill" style={{ width: `${progress}%` }} />
           </div>
-        )}
+        </div>
+        {!revealed && <TimerRing msLeft={msLeft} totalMs={totalMs} size={92} />}
+        <button onClick={onEnd} className="btn btn-sm self-start">Terminar</button>
+      </header>
 
-        {/* Resumen de resultados */}
-        {phase === 'results' && questionResults && (() => {
-          const correct = questionResults.answers.filter(a => a.correct)
-          return (
-            <div className="bg-[#12121a] border border-[#2a2a3a] rounded-xl p-4 mb-4">
-              <p className="text-xs text-zinc-500 uppercase tracking-widest mb-3">
-                Resultados
-              </p>
-              <div className="flex gap-6 justify-center">
-                <div className="text-center">
-                  <p className="text-3xl font-black text-green-400">{correct.length}</p>
-                  <p className="text-xs text-zinc-500">Correctas</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-3xl font-black text-red-400">
-                    {questionResults.answers.length - correct.length}
-                  </p>
-                  <p className="text-xs text-zinc-500">Incorrectas</p>
-                </div>
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="flex flex-col gap-5">
+          <section className="panel p-6 md:p-8 animate-pop-in">
+            {question.img && (
+              <div className="bg-white rounded-2xl p-4 mb-6">
+                <img src={assetUrl(question.img)} alt="" className="max-h-56 mx-auto object-contain" />
               </div>
+            )}
+            <h1 className="text-2xl md:text-4xl font-black leading-tight text-center">{question.text}</h1>
+          </section>
 
-              {correct.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-[#2a2a3a]">
-                  <p className="text-xs text-zinc-600 mb-2">Más rápidos:</p>
-                  {[...correct]
-                    .sort((a, b) => a.timeMs - b.timeMs)
-                    .slice(0, 3)
-                    .map((a, i) => (
-                      <div key={i} className="flex items-center justify-between text-xs py-0.5">
-                        <span className="text-zinc-400">{a.teamName}</span>
-                        <span className="text-yellow-400 tabular-nums font-medium">
-                          {(a.timeMs / 1000).toFixed(2)}s
-                        </span>
-                      </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            {question.options.map((opt, i) => {
+              const isCorrect = question.correctIndex === i
+              return (
+                <div key={i} className="animate-fade-slide-up" style={{ animationDelay: `${120 + i * 80}ms` }}>
+                  <div
+                    className={`answer answer-static text-lg md:text-xl min-h-20 ${
+                      revealed ? (isCorrect ? 'answer-correct' : 'answer-dimmed') : ''
+                    }`}
+                  >
+                    <span className="answer-key">{optionLetter(i)}</span>
+                    <span className="flex-1">{opt}</span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {revealed && questionResults && (
+            <section className="panel p-5 animate-fade-slide-up">
+              <div className="grid grid-cols-3 gap-3">
+                <ResultTile value={correctAnswers.length} label="Correctas" color="var(--color-lime)" />
+                <ResultTile value={answers.length - correctAnswers.length} label="Incorrectas" color="var(--color-pink)" />
+                <ResultTile value={missedCount} label="Sin responder" color="var(--color-ink-soft)" />
+              </div>
+              {fastest.length > 0 && (
+                <div className="mt-5">
+                  <p className="text-ink-soft text-sm mb-3">Los más rápidos</p>
+                  <div className="flex flex-wrap gap-2">
+                    {fastest.map((a, i) => (
+                      <span
+                        key={a.teamName}
+                        className="flex items-center gap-2 pl-1 pr-3 py-1 row-card rounded-full animate-pop-in"
+                        style={{ animationDelay: `${i * 100}ms` }}
+                      >
+                        <Avatar name={a.teamName} colorIndex={joinIndexOf(a.teamName)} size={28} />
+                        <span>{a.teamName}</span>
+                        <span className="opacity-70 text-sm tabular-nums">{formatSeconds(a.timeMs)}</span>
+                      </span>
                     ))}
+                  </div>
                 </div>
               )}
-            </div>
-          )
-        })()}
-
-        {/* Botones de acción */}
-        <div className="mt-auto space-y-3">
-          {phase === 'question' && (
-            <button
-              onClick={onRevealResults}
-              className="w-full py-4 bg-yellow-400 hover:bg-yellow-300 text-black font-black
-                         text-lg rounded-xl uppercase tracking-widest transition-all active:scale-95"
-            >
-              👁️ Revelar Resultados
-            </button>
+            </section>
           )}
-          {phase === 'results' && (
+        </div>
+
+        <aside className="flex flex-col gap-5">
+          {!revealed && (
+            <section className="panel p-5 text-center">
+              <p className="text-ink-soft">Respuestas</p>
+              <p className="font-display text-6xl text-highlight mt-1">
+                {answersCount}
+                <span className="text-ink-soft text-3xl"> / {totalTeams}</span>
+              </p>
+              <p className={`mt-2 ${readyToReveal ? 'text-highlight' : 'text-ink-soft'}`}>
+                {everyoneAnswered
+                  ? '¡Todos respondieron!'
+                  : msLeft === 0 ? '¡Tiempo agotado!' : 'Esperando respuestas...'}
+              </p>
+            </section>
+          )}
+
+          {revealed ? (
             <button
               onClick={onNextQuestion}
-              className="w-full py-4 bg-green-500 hover:bg-green-400 text-white font-black
-                         text-lg rounded-xl uppercase tracking-widest transition-all active:scale-95"
+              className="btn btn-lg w-full"
             >
-              ▶ Siguiente Pregunta
+              {isLast ? 'Ver podio' : 'Siguiente pregunta'}
+            </button>
+          ) : (
+            <button
+              onClick={onRevealResults}
+              className={`btn btn-lg w-full ${readyToReveal ? 'animate-glow' : ''}`}
+            >
+              Revelar respuesta
             </button>
           )}
-        </div>
-      </div>
 
-      {/* Panel derecho: carrera en tiempo real */}
-      <div className="flex-1 p-6 flex flex-col">
-        <p className="text-xs text-zinc-500 uppercase tracking-widest mb-4 text-center">
-          Carrera en tiempo real
-        </p>
-        <div className="flex-1">
-          <RaceTrack teams={racePositions} />
-        </div>
+          <Leaderboard teams={leaderboard} limit={8} />
+        </aside>
       </div>
     </div>
   )

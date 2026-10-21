@@ -16,165 +16,188 @@ import QuestionView   from '../components/player/QuestionView'
 import AnsweredView   from '../components/player/AnsweredView'
 import Podium         from '../components/shared/Podium'
 
-type PlayerPhase = 'register' | 'lobby' | 'question' | 'answered' | 'results' | 'podium'
+type PlayerPhase = 'register' | 'reconnecting' | 'ended' | 'lobby' | 'question' | 'answered' | 'results' | 'podium'
 
-const INACTIVITY_MS = 3 * 60 * 1000
+const SESSION_KEY = 'versus_session'
+
+function loadSession(): SessionData | null {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    localStorage.removeItem(SESSION_KEY)
+    return null
+  }
+}
 
 export default function PlayerPage() {
-  const socketRef       = useRef(io(SOCKET_URL))
-  const socket          = socketRef.current
-  const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // Ref para acceder a la sesión dentro de listeners sin stale closure
-  const sessionRef      = useRef<SessionData | null>(null)
+  // Lazy init: io() must run once, not on every render
+  const [socket]         = useState(() => io(SOCKET_URL))
+  const [initialSession] = useState(loadSession)
+  // Ref so socket listeners read the current session without stale closures
+  const sessionRef       = useRef<SessionData | null>(initialSession)
 
-  const [phase,           setPhase]           = useState<PlayerPhase>('register')
-  const [session,         setSession]         = useState<SessionData | null>(null)
+  const [phase,           setPhase]           = useState<PlayerPhase>(initialSession ? 'reconnecting' : 'register')
+  const [session,         setSession]         = useState<SessionData | null>(initialSession)
   const [teams,           setTeams]           = useState<Team[]>([])
   const [currentQuestion, setCurrentQuestion] = useState<ActiveQuestion | null>(null)
   const [answerResult,    setAnswerResult]    = useState<AnswerResult | null>(null)
-  const [racePositions,   setRacePositions]   = useState<Team[]>([])
+  const [myAnswerIndex,   setMyAnswerIndex]   = useState<number | null>(null)
+  const [correctIndex,    setCorrectIndex]    = useState<number | null>(null)
+  const [leaderboard,     setLeaderboard]     = useState<Team[]>([])
   const [podiumData,      setPodiumData]      = useState<PodiumData | null>(null)
+  const [notice,          setNotice]          = useState<string | null>(null)
 
-  const resetInactivityTimer = () => {
-    if (inactivityTimer.current) clearTimeout(inactivityTimer.current)
-    inactivityTimer.current = setTimeout(() => {
-      localStorage.removeItem('versus_session')
-      window.location.reload()
-    }, INACTIVITY_MS)
+  const clearRound = () => {
+    setAnswerResult(null)
+    setMyAnswerIndex(null)
+    setCorrectIndex(null)
   }
 
-  const registerSession = (s: SessionData) => {
-    sessionRef.current = s
-    setSession(s)
+  // Forgets the session on this device and resets every game view
+  const closeSession = (nextPhase: PlayerPhase) => {
+    sessionRef.current = null
+    setSession(null)
+    localStorage.removeItem(SESSION_KEY)
+    setCurrentQuestion(null)
+    clearRound()
+    setLeaderboard([])
+    setPodiumData(null)
+    setPhase(nextPhase)
   }
 
   useEffect(() => {
-    // ── Reconexión automática al reconectar el socket ─────────────────────
-    // socket.io cambia el socket ID en cada reconexión. Sin esto, el servidor
-    // no encuentra al jugador en game.teams y no aparece en el listado.
-    socket.on('connect', () => {
-      if (sessionRef.current) {
-        socket.emit('join_room', sessionRef.current)
-      }
+    // Rejoins on first connect and after any network drop (socket.io rotates the socket id).
+    // The server keeps an absent player for 5 minutes; after that the session is gone.
+    const rejoin = () => {
+      if (sessionRef.current) socket.emit('join_room', { ...sessionRef.current, resume: true })
+    }
+    socket.on('connect', rejoin)
+    if (socket.connected) rejoin()
+
+    socket.on('session_expired', () => {
+      setNotice('Tu sesión terminó. Ingresa de nuevo para jugar.')
+      closeSession('register')
     })
+
+    socket.on('session_ended', () => closeSession('ended'))
 
     socket.on('game_state', (state: GameStateSnapshot) => {
       setTeams(state.teams)
+      if (!sessionRef.current) return
       if (state.phase === 'podium') {
         setPhase('podium')
-      } else if (state.phase === 'lobby' && sessionRef.current) {
-        // Admin reinició la partida → todos vuelven al lobby
+      } else if (state.phase === 'lobby') {
+        // Initial lobby, or the admin reset the game: everyone goes back to the lobby
         setPhase('lobby')
         setCurrentQuestion(null)
-        setAnswerResult(null)
-        setRacePositions([])
+        clearRound()
+        setLeaderboard([])
         setPodiumData(null)
       }
     })
 
-    socket.on('teams_update', (updatedTeams: Team[]) => {
-      setTeams(updatedTeams)
-    })
+    socket.on('teams_update', (updatedTeams: Team[]) => setTeams(updatedTeams))
 
     socket.on('question_start', (q: ActiveQuestion) => {
       setCurrentQuestion(q)
-      setAnswerResult(null)
-      setRacePositions([])
+      clearRound()
       setPhase('question')
-      resetInactivityTimer()
     })
 
     socket.on('answer_result', (result: AnswerResult) => {
       setAnswerResult(result)
+      if (result.optionIndex !== undefined) setMyAnswerIndex(result.optionIndex)
       setPhase('answered')
     })
 
-    socket.on('race_update', (positions: Team[]) => {
-      setRacePositions(positions)
-    })
+    socket.on('race_update', (positions: Team[]) => setLeaderboard(positions))
 
     socket.on('question_results', (results: QuestionResults) => {
-      setRacePositions(results.leaderboard)
+      setLeaderboard(results.leaderboard)
+      setCorrectIndex(results.correctIndex >= 0 ? results.correctIndex : null)
       setPhase('results')
     })
 
     socket.on('game_over', (data: PodiumData) => {
+      // Session is kept: if the admin starts a new game, the player returns to the lobby
       setPodiumData(data)
       setPhase('podium')
-      if (inactivityTimer.current) clearTimeout(inactivityTimer.current)
-      // No borramos localStorage: si admin resetea, el jugador vuelve al lobby
-      // automáticamente sin necesidad de recargar
     })
 
-    // ── Primera carga: reconectar desde localStorage ───────────────────────
-    // El evento 'connect' de arriba maneja las reconexiones posteriores.
-    // Este bloque solo aplica al cargar la página por primera vez.
-    const saved = localStorage.getItem('versus_session')
-    if (saved) {
-      try {
-        const savedSession: SessionData = JSON.parse(saved)
-        registerSession(savedSession)
-        socket.emit('join_room', savedSession)
-        socket.once('join_error', () => {
-          sessionRef.current = null
-          setSession(null)
-          localStorage.removeItem('versus_session')
-          setPhase('register')
-        })
-      } catch {
-        localStorage.removeItem('versus_session')
-      }
-    }
-
-    return () => {
-      socket.disconnect()
-      if (inactivityTimer.current) clearTimeout(inactivityTimer.current)
-    }
+    return () => { socket.disconnect() }
   }, [socket])
 
   const handleRegistered = (s: SessionData) => {
-    registerSession(s)
+    sessionRef.current = s
+    setSession(s)
+    setNotice(null)
+    localStorage.setItem(SESSION_KEY, JSON.stringify(s))
     setPhase('lobby')
-    resetInactivityTimer()
   }
 
   const handleAnswer = (optionIndex: number) => {
+    setMyAnswerIndex(optionIndex)
     socket.emit('submit_answer', { optionIndex })
-    resetInactivityTimer()
   }
 
   const handleLogout = () => {
-    localStorage.removeItem('versus_session')
+    localStorage.removeItem(SESSION_KEY)
     socket.emit('logout')
     socket.disconnect()
     window.location.reload()
   }
 
+  const logoutButton = (label: string) => (
+    <button onClick={handleLogout} className="btn btn-sm fixed bottom-5 right-5 z-40">
+      {label}
+    </button>
+  )
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   if (phase === 'register') {
-    return <TeamRegister socket={socket} onRegistered={handleRegistered} />
+    return <TeamRegister socket={socket} notice={notice} onRegistered={handleRegistered} />
+  }
+
+  if (phase === 'ended') {
+    return (
+      <div className="min-h-dvh flex flex-col items-center justify-center gap-4 px-5 text-center">
+        <h1 className="game-title text-4xl md:text-5xl animate-bounce-in">Sesión finalizada</h1>
+        <p className="text-ink-soft text-lg max-w-xs">Gracias por participar.</p>
+        <button onClick={() => setPhase('register')} className="btn btn-lg mt-2">
+          Ingresar de nuevo
+        </button>
+      </div>
+    )
+  }
+
+  if (phase === 'reconnecting') {
+    return (
+      <>
+        <div className="min-h-dvh flex flex-col items-center justify-center gap-3 px-5 text-center">
+          <h1 className="game-title text-4xl">Reconectando</h1>
+          <p className="text-ink-soft">{session?.teamName}</p>
+          <span className="loading-dots text-highlight" aria-hidden><span /><span /><span /></span>
+        </div>
+        {logoutButton('Salir')}
+      </>
+    )
   }
 
   if (phase === 'podium' && podiumData) {
     return (
-      <div className="relative">
+      <>
         <Podium podium={podiumData.podium} all={podiumData.all} myTeamName={session?.teamName} />
-        <button
-          onClick={handleLogout}
-          className="fixed bottom-4 right-4 text-xs text-zinc-500 hover:text-red-400
-                     px-3 py-2 rounded-lg border border-[#2a2a3a] hover:border-red-900/50
-                     transition-colors bg-[#12121a]"
-        >
-          Salir del juego
-        </button>
-      </div>
+        {logoutButton('Salir del juego')}
+      </>
     )
   }
 
   if (phase === 'question' && currentQuestion) {
     return (
       <QuestionView
+        key={currentQuestion.index}
         question={currentQuestion}
         onAnswer={handleAnswer}
       />
@@ -184,27 +207,21 @@ export default function PlayerPage() {
   if ((phase === 'answered' || phase === 'results') && currentQuestion) {
     return (
       <AnsweredView
+        revealed={phase === 'results'}
+        question={currentQuestion}
         result={answerResult}
-        racePositions={racePositions}
+        myAnswerIndex={myAnswerIndex}
+        correctIndex={correctIndex}
+        leaderboard={leaderboard}
         teamName={session?.teamName ?? ''}
       />
     )
   }
 
   return (
-    <div className="relative">
-      <WaitingLobby
-        teamName={session?.teamName ?? ''}
-        teams={teams}
-      />
-      <button
-        onClick={handleLogout}
-        className="fixed bottom-4 right-4 text-xs text-zinc-600 hover:text-red-400
-                   px-3 py-2 rounded-lg border border-[#2a2a3a] hover:border-red-900/50
-                   transition-colors bg-[#12121a]"
-      >
-        Salir
-      </button>
-    </div>
+    <>
+      <WaitingLobby teamName={session?.teamName ?? ''} teams={teams} />
+      {logoutButton('Salir')}
+    </>
   )
 }

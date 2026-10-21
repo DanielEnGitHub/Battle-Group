@@ -1,86 +1,208 @@
-import type { Team } from '../../types/game'
-import RaceTrack from '../shared/RaceTrack'
-import { CAR_COLORS } from '../../constants/colors'
+import { useState } from 'react'
+import type { GameConfig, Team } from '../../types/game'
+import Avatar from '../shared/Avatar'
+
+const TIME_PRESETS = [10, 15, 20, 30, 45, 60]
+const COUNT_PRESETS = [5, 10, 15]
+const MIN_SECONDS = 5
+const MAX_SECONDS = 300
 
 interface Props {
   teams: Team[]
   quizName: string
-  onStart: () => void
+  bankSize: number
+  joinUrls: string[]
+  onStart: (config: GameConfig) => void
   onBack: () => void
+  onEnd: () => void
 }
 
-export default function AdminLobby({ teams, quizName, onStart, onBack }: Props) {
+const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n))
+
+export default function AdminLobby({ teams, quizName, bankSize, joinUrls, onStart, onBack, onEnd }: Props) {
+  const [questionCount, setQuestionCount] = useState(() => Math.min(10, bankSize))
+  const [timeLimit,     setTimeLimit]     = useState(20)
+  const [copied,        setCopied]        = useState(false)
+
+  const count   = clamp(questionCount || 1, 1, Math.max(1, bankSize))
+  const seconds = clamp(timeLimit || MIN_SECONDS, MIN_SECONDS, MAX_SECONDS)
+  const totalMinutes = Math.max(1, Math.round((count * seconds) / 60))
+  const canStart = teams.length > 0 && bankSize > 0
+  const mainUrl = joinUrls[0]
+
+  // Clipboard is only available on secure origins (localhost/https); hide the button elsewhere
+  const canCopy = Boolean(mainUrl && navigator.clipboard)
+
+  const copyUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(mainUrl)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      setCopied(false)
+    }
+  }
+
   return (
-    <div className="min-h-dvh bg-[#0a0a0f] flex flex-col md:flex-row">
-      {/* Panel izquierdo: control */}
-      <div className="w-full md:w-96 flex-shrink-0 flex flex-col p-6 border-r border-[#2a2a3a]">
-        <button
-          onClick={onBack}
-          className="text-zinc-500 hover:text-white text-sm mb-6 text-left transition-colors w-fit"
-        >
-          ← Cambiar quiz
-        </button>
-
-        <div className="mb-6">
-          <h1 className="text-3xl font-black text-yellow-400">VERSUS</h1>
-          <p className="text-white font-bold text-xl mt-1">{quizName}</p>
-          <div className="flex items-center gap-1.5 mt-1">
-            <span className="inline-block w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-            <span className="text-zinc-500 text-sm">Sala abierta</span>
-          </div>
+    <div className="min-h-dvh w-full max-w-6xl mx-auto px-4 md:px-8 py-8 flex flex-col gap-6">
+      <header className="flex flex-wrap items-center justify-between gap-4 animate-fade-slide-up">
+        <div className="flex items-center gap-4">
+          <img src="/logo-escuela.png" alt="Logo de la escuela" className="w-14" />
+          <h1 className="game-title text-3xl md:text-4xl">{quizName}</h1>
         </div>
+        <div className="flex gap-2">
+          <button onClick={onBack} className="btn btn-sm">Cambiar quiz</button>
+          <button onClick={onEnd} className="btn btn-sm">Terminar</button>
+        </div>
+      </header>
 
-        {/* Lista de equipos */}
-        <div className="flex-1 min-h-0 overflow-y-auto">
-          <p className="text-xs text-zinc-500 uppercase tracking-widest mb-3">
-            Equipos ({teams.length})
+      <div className="grid gap-6 lg:grid-cols-2">
+        <section className="panel p-6 flex flex-col gap-6 animate-pop-in">
+          <h2 className="font-display text-2xl">Configuración</h2>
+
+          <div>
+            <div className="flex items-baseline justify-between mb-3">
+              <label htmlFor="question-count">Número de preguntas</label>
+              <span className="text-sm text-ink-soft">de {bankSize}</span>
+            </div>
+            <div className="flex items-center gap-4">
+              <input
+                id="question-count"
+                type="range"
+                min={1}
+                max={Math.max(1, bankSize)}
+                value={count}
+                onChange={e => setQuestionCount(Number(e.target.value))}
+                className="flex-1 accent-highlight h-2 cursor-pointer"
+              />
+              <input
+                type="number"
+                min={1}
+                max={bankSize}
+                value={questionCount}
+                onChange={e => setQuestionCount(Number(e.target.value))}
+                onBlur={() => setQuestionCount(count)}
+                className="game-input w-20 text-center"
+                aria-label="Número de preguntas"
+              />
+            </div>
+            <div className="flex flex-wrap gap-2 mt-4">
+              {COUNT_PRESETS.filter(n => n < bankSize).map(n => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setQuestionCount(n)}
+                  className={`chip ${count === n ? 'chip-active' : ''}`}
+                >
+                  {n}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => setQuestionCount(bankSize)}
+                className={`chip ${count === bankSize ? 'chip-active' : ''}`}
+              >
+                Todas
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label htmlFor="time-limit" className="block mb-3">Segundos por pregunta</label>
+            <div className="flex flex-wrap items-center gap-2">
+              {TIME_PRESETS.map(s => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setTimeLimit(s)}
+                  className={`chip ${seconds === s ? 'chip-active' : ''}`}
+                >
+                  {s}
+                </button>
+              ))}
+              <input
+                id="time-limit"
+                type="number"
+                min={MIN_SECONDS}
+                max={MAX_SECONDS}
+                value={timeLimit}
+                onChange={e => setTimeLimit(Number(e.target.value))}
+                onBlur={() => setTimeLimit(seconds)}
+                className="game-input w-20 text-center ml-1"
+              />
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-tile px-4 py-3 text-ink-soft">
+            {count} preguntas · {seconds} s cada una · unos {totalMinutes} min
+          </div>
+
+          <p className="text-sm text-ink-soft -mt-2">
+            Nota: las preguntas y las respuestas se muestran en orden aleatorio.
           </p>
 
-          {teams.length === 0 ? (
-            <div className="text-center py-10 text-zinc-600">
-              <div className="text-3xl mb-2 animate-bounce">📱</div>
-              <p className="text-sm">Esperando jugadores...</p>
-              <p className="text-xs mt-1 text-zinc-700">
-                Compartí la IP de red con el grupo
+          <div className="mt-auto pt-2">
+            <button
+              onClick={() => onStart({ questionCount: count, timeLimit: seconds })}
+              disabled={!canStart}
+              className="btn btn-lg w-full"
+            >
+              Comenzar
+            </button>
+            {teams.length === 0 && (
+              <p className="text-center text-sm text-ink-soft mt-3">
+                Se necesita al menos un jugador para iniciar.
               </p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {teams.map((t, i) => (
-                <div
-                  key={t.sessionId || t.socketId}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl
-                             bg-[#12121a] border border-[#2a2a3a] animate-fade-slide-up"
-                >
-                  <div
-                    className="w-3 h-3 rounded-full flex-shrink-0"
-                    style={{ background: CAR_COLORS[i % CAR_COLORS.length] }}
-                  />
-                  <span className="text-white text-sm font-medium">{t.name}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        </section>
 
-        <button
-          onClick={onStart}
-          disabled={teams.length === 0}
-          className="mt-6 w-full py-4 bg-green-500 hover:bg-green-400 disabled:opacity-30
-                     disabled:cursor-not-allowed text-white font-black text-xl rounded-xl
-                     uppercase tracking-widest transition-all active:scale-95 shadow-lg"
-        >
-          🚦 ¡INICIAR!
-        </button>
-      </div>
+        <div className="flex flex-col gap-6">
+          <section className="panel p-6 animate-pop-in" style={{ animationDelay: '80ms' }}>
+            <h2 className="font-display text-2xl mb-4">Cómo unirse</h2>
+            {mainUrl ? (
+              <div className="flex items-center gap-3 rounded-2xl bg-tile p-2 pl-4">
+                <span className="flex-1 min-w-0 font-display text-2xl md:text-3xl text-highlight break-all">
+                  {mainUrl}
+                </span>
+                {canCopy && (
+                  <button onClick={copyUrl} className="btn btn-sm shrink-0">
+                    {copied ? 'Copiado' : 'Copiar'}
+                  </button>
+                )}
+              </div>
+            ) : (
+              <p className="text-ink-soft">Buscando la dirección de la red...</p>
+            )}
+            {joinUrls.slice(1).map(url => (
+              <p key={url} className="text-sm text-ink-soft mt-2 break-all">También: {url}</p>
+            ))}
+            <p className="text-sm text-ink-soft mt-4">
+              Nota: todos deben estar conectados a la misma red Wi-Fi.
+            </p>
+          </section>
 
-      {/* Panel derecho: preview de la carrera */}
-      <div className="flex-1 p-6 flex flex-col">
-        <p className="text-xs text-zinc-500 uppercase tracking-widest mb-4 text-center">
-          Vista previa de la carrera
-        </p>
-        <div className="flex-1">
-          <RaceTrack teams={teams} />
+          <section className="panel p-6 flex-1 animate-pop-in" style={{ animationDelay: '160ms' }}>
+            <h2 className="font-display text-2xl mb-4">Jugadores ({teams.length})</h2>
+            {teams.length === 0 ? (
+              <div className="text-center py-10 text-ink-soft">
+                <div className="text-4xl mb-3 animate-float">📱</div>
+                <p>Esperando jugadores...</p>
+              </div>
+            ) : (
+              <ul className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {teams.map(t => (
+                  <li
+                    key={t.sessionId}
+                    className="flex items-center gap-2 row-card px-2 py-2 animate-pop-in"
+                  >
+                    <Avatar name={t.name} colorIndex={t.joinIndex} size={32} />
+                    <span className="truncate">{t.name}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
         </div>
       </div>
     </div>

@@ -11,9 +11,11 @@ export interface Team {
 
 export interface Question {
   text: string;
-  options: [string, string, string, string];
+  options: string[];
   correctIndex: number;
   timeLimit: number;
+  img?: string;
+  topic?: string;
 }
 
 export interface Quiz {
@@ -23,11 +25,17 @@ export interface Quiz {
   createdAt?: string;
 }
 
+export interface GameConfig {
+  questionCount: number;
+  timeLimit: number;
+}
+
 export interface GameStateSnapshot {
   phase: GamePhase;
   teams: Team[];
   quizName: string | null;
   totalQuestions: number;
+  bankSize: number;
   currentQuestionIndex: number;
 }
 
@@ -35,20 +43,22 @@ export interface ActiveQuestion {
   index: number;
   total: number;
   text: string;
-  options: string[];
+  options: string[];   // players receive their own shuffled order
+  img: string | null;
   timeLimit: number;
-  timeLeftMs?: number;  // solo para join/reconexión mid-question
-  correctIndex?: number; // Solo para admin
+  timeLeftMs?: number;  // only on mid-question join/reconnect
+  correctIndex?: number; // admin only
 }
 
 export interface AnswerResult {
   correct: boolean;
   points: number;
   timeMs: number;
+  optionIndex?: number; // present on reconnect catch-up
 }
 
 export interface QuestionResults {
-  correctIndex: number;
+  correctIndex: number; // index in the receiver's own option order
   answers: Array<{
     teamName: string;
     correct: boolean;

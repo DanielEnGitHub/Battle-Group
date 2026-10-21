@@ -39,6 +39,7 @@ function createInitialState() {
     phase: 'lobby',
     teams: {},
     currentQuiz: null,
+    questions: [],
     currentQuestionIndex: -1,
     questionStartTime: null,
     answers: {},
@@ -52,13 +53,18 @@ let game = createInitialState();
 const DISCONNECT_TTL = 5 * 60 * 1000;
 const disconnectTimers = {};
 
+// Tolerates network latency between the client timer hitting zero and the answer arriving.
+const LATE_ANSWER_GRACE_MS = 1500;
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function getTeamsSorted() {
-  return Object.values(game.teams).sort((a, b) => {
-    if (b.score !== a.score) return b.score - a.score;
-    return a.totalTime - b.totalTime;
-  });
+  return Object.values(game.teams)
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return a.totalTime - b.totalTime;
+    })
+    .map(({ optionOrder, ...publicTeam }) => publicTeam);
 }
 
 function getStateSnapshot() {
@@ -66,12 +72,110 @@ function getStateSnapshot() {
     phase: game.phase,
     teams: getTeamsSorted(),
     quizName: game.currentQuiz?.name ?? null,
-    totalQuestions: game.currentQuiz?.questions.length ?? 0,
+    totalQuestions: game.questions.length,
+    bankSize: game.currentQuiz?.questions.length ?? 0,
     currentQuestionIndex: game.currentQuestionIndex,
   };
 }
 
+function shuffle(items) {
+  const copy = [...items];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+function clampInt(value, min, max, fallback) {
+  const n = Number.parseInt(value, 10);
+  if (Number.isNaN(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
+}
+
+function baseQuestionPayload(q, index) {
+  return {
+    index,
+    total: game.questions.length,
+    text: q.text,
+    options: q.options,
+    img: q.img ?? null,
+    timeLimit: q.timeLimit,
+  };
+}
+
+// optionOrder[shuffledPosition] = originalOptionIndex. Lives on the team so it survives reconnects.
+function ensureOptionOrder(team, q) {
+  if (!team.optionOrder || team.optionOrder.length !== q.options.length) {
+    team.optionOrder = shuffle(q.options.map((_, i) => i));
+  }
+  return team.optionOrder;
+}
+
+function playerQuestionPayload(team, q, index) {
+  const order = ensureOptionOrder(team, q);
+  return { ...baseQuestionPayload(q, index), options: order.map(i => q.options[i]) };
+}
+
+function podiumPayload() {
+  const byScore = getTeamsSorted();
+  return { podium: byScore.slice(0, 3), all: byScore };
+}
+
+function timeLeftMs(q) {
+  return Math.max(0, q.timeLimit * 1000 - (Date.now() - game.questionStartTime));
+}
+
+function resultsPayload() {
+  return {
+    answers: Object.entries(game.answers).map(([sid, a]) => ({
+      teamName: game.teams[sid]?.name ?? '?',
+      correct: a.correct,
+      timeMs: a.timeMs,
+    })),
+    leaderboard: getTeamsSorted(),
+  };
+}
+
+function playerResultsPayload(team, q) {
+  return { ...resultsPayload(), correctIndex: ensureOptionOrder(team, q).indexOf(q.correctIndex) };
+}
+
+function advanceQuestion() {
+  const nextIdx = game.currentQuestionIndex + 1;
+
+  if (nextIdx >= game.questions.length) {
+    game.phase = 'podium';
+    io.emit('game_over', podiumPayload());
+    return;
+  }
+
+  game.currentQuestionIndex = nextIdx;
+  game.phase = 'question';
+  game.answers = {};
+  game.questionStartTime = Date.now();
+
+  const q = game.questions[nextIdx];
+  Object.values(game.teams).forEach(team => {
+    team.optionOrder = null;
+    io.to(team.socketId).emit('question_start', playerQuestionPayload(team, q, nextIdx));
+  });
+  io.to('admin').emit('question_start', {
+    ...baseQuestionPayload(q, nextIdx),
+    correctIndex: q.correctIndex,
+  });
+}
+
+function getLanIps() {
+  return Object.values(os.networkInterfaces())
+    .flat()
+    .filter(i => i.family === 'IPv4' && !i.internal)
+    .map(i => i.address);
+}
+
 // ── REST API ──────────────────────────────────────────────────────────────────
+
+app.get('/api/network', (_req, res) => res.json({ ips: getLanIps() }));
 
 app.get('/api/quizzes', (_req, res) => res.json(readQuizzes()));
 
@@ -127,6 +231,23 @@ io.on('connection', (socket) => {
   socket.on('admin_join', () => {
     socket.join('admin');
     socket.emit('game_state', getStateSnapshot());
+
+    // Catch-up so a reloaded admin screen lands on the live question/results/podium
+    if ((game.phase === 'question' || game.phase === 'results') && game.questions.length) {
+      const q = game.questions[game.currentQuestionIndex];
+      socket.emit('question_start', {
+        ...baseQuestionPayload(q, game.currentQuestionIndex),
+        correctIndex: q.correctIndex,
+        timeLeftMs: timeLeftMs(q),
+      });
+      socket.emit('answer_received', { answersCount: Object.keys(game.answers).length });
+      socket.emit('race_update', getTeamsSorted());
+      if (game.phase === 'results') {
+        socket.emit('question_results', { ...resultsPayload(), correctIndex: q.correctIndex });
+      }
+    } else if (game.phase === 'podium') {
+      socket.emit('game_over', podiumPayload());
+    }
     console.log('Admin conectado');
   });
 
@@ -134,69 +255,47 @@ io.on('connection', (socket) => {
     const quiz = readQuizzes().find(q => q.id === quizId);
     if (!quiz) return socket.emit('server_error', 'Quiz no encontrado');
     game.currentQuiz = quiz;
+    game.questions = [];
     game.phase = 'lobby';
     game.currentQuestionIndex = -1;
     game.answers = {};
     io.emit('game_state', getStateSnapshot());
   });
 
+  socket.on('start_game', ({ questionCount, timeLimit } = {}) => {
+    if (!game.currentQuiz || game.phase !== 'lobby') return;
+    const bank = game.currentQuiz.questions;
+    const count = clampInt(questionCount, 1, bank.length, bank.length);
+    const seconds = clampInt(timeLimit, 5, 300, 20);
+
+    game.questions = shuffle(bank).slice(0, count).map(q => ({ ...q, timeLimit: seconds }));
+    game.currentQuestionIndex = -1;
+    advanceQuestion();
+  });
+
   socket.on('next_question', () => {
-    if (!game.currentQuiz) return;
-    const nextIdx = game.currentQuestionIndex + 1;
-
-    if (nextIdx >= game.currentQuiz.questions.length) {
-      game.phase = 'podium';
-      const byScore = getTeamsSorted();
-      io.emit('game_over', { podium: byScore.slice(0, 3), all: byScore });
-      return;
-    }
-
-    game.currentQuestionIndex = nextIdx;
-    game.phase = 'question';
-    game.answers = {};
-    game.questionStartTime = Date.now();
-
-    const q = game.currentQuiz.questions[nextIdx];
-    const base = {
-      index: nextIdx,
-      total: game.currentQuiz.questions.length,
-      text: q.text,
-      options: q.options,
-      timeLimit: q.timeLimit ?? 30,
-    };
-
-    io.to('players').emit('question_start', base);
-    io.to('admin').emit('question_start', { ...base, correctIndex: q.correctIndex });
+    if (!game.questions.length || game.phase === 'podium') return;
+    advanceQuestion();
   });
 
   socket.on('reveal_results', () => {
     if (game.phase !== 'question') return;
     game.phase = 'results';
-    const q = game.currentQuiz.questions[game.currentQuestionIndex];
+    const q = game.questions[game.currentQuestionIndex];
 
-    io.emit('question_results', {
-      correctIndex: q.correctIndex,
-      answers: Object.entries(game.answers).map(([sid, a]) => ({
-        teamName: game.teams[sid]?.name ?? '?',
-        correct: a.correct,
-        timeMs: a.timeMs,
-      })),
-      leaderboard: getTeamsSorted(),
+    io.to('admin').emit('question_results', { ...resultsPayload(), correctIndex: q.correctIndex });
+    Object.values(game.teams).forEach(team => {
+      io.to(team.socketId).emit('question_results', playerResultsPayload(team, q));
     });
   });
 
+  // New game with the same players. Disconnect timers are kept so absent players still expire.
   socket.on('reset_game', () => {
-    // Cancelar todos los timers de desconexión pendientes
-    Object.keys(disconnectTimers).forEach(sid => {
-      clearTimeout(disconnectTimers[sid]);
-      delete disconnectTimers[sid];
-    });
-
     const preservedNextJoinIndex = game.nextJoinIndex;
     const preservedTeams = Object.fromEntries(
       Object.entries(game.teams).map(([sid, team]) => [
         sid,
-        { ...team, score: 0, totalTime: 0, hasParticipated: false },
+        { ...team, score: 0, totalTime: 0, optionOrder: null },
       ])
     );
 
@@ -207,13 +306,29 @@ io.on('connection', (socket) => {
     console.log('Juego reiniciado');
   });
 
+  // Ends every player session and clears the room
+  socket.on('end_session', () => {
+    Object.keys(disconnectTimers).forEach(sid => {
+      clearTimeout(disconnectTimers[sid]);
+      delete disconnectTimers[sid];
+    });
+    io.to('players').emit('session_ended');
+    io.in('players').socketsLeave('players');
+
+    game = createInitialState();
+    io.emit('game_state', getStateSnapshot());
+    console.log('Sesión terminada por el admin');
+  });
+
   // ── Player ────────────────────────────────────────────────────────────────
 
-  socket.on('join_room', ({ teamName, sessionId }) => {
+  // `resume` is set when a device restores a saved session; it must never create a new player
+  socket.on('join_room', ({ teamName, sessionId, resume }) => {
     const name = teamName?.trim();
     if (!name) return socket.emit('join_error', { message: 'Nombre inválido' });
 
     const reconnect = Object.entries(game.teams).find(([, t]) => t.sessionId === sessionId);
+    if (!reconnect && resume) return socket.emit('session_expired');
     if (reconnect) {
       const [oldSid, data] = reconnect;
       if (disconnectTimers[oldSid]) {
@@ -230,7 +345,7 @@ io.on('connection', (socket) => {
     } else {
       if (Object.values(game.teams).some(t => t.name === name)) {
         return socket.emit('join_error', {
-          message: `"${name}" ya está en uso. Elegí otro nombre.`,
+          message: `"${name}" ya está en uso. Elige otro nombre.`,
         });
       }
       game.teams[socket.id] = {
@@ -239,7 +354,6 @@ io.on('connection', (socket) => {
         name,
         score: 0,
         totalTime: 0,
-        hasParticipated: false,
         joinIndex: game.nextJoinIndex++,
       };
       console.log(`Nuevo equipo: ${name}`);
@@ -249,48 +363,51 @@ io.on('connection', (socket) => {
     socket.emit('join_success', { team: game.teams[socket.id] });
     socket.emit('game_state', getStateSnapshot());
 
-    // Catch-up si hay una pregunta activa
-    if (game.phase === 'question' && game.currentQuiz) {
-      const q = game.currentQuiz.questions[game.currentQuestionIndex];
-      const timeLeftMs = Math.max(0, q.timeLimit * 1000 - (Date.now() - game.questionStartTime));
+    // Catch-up if a question, its results, or the podium are live
+    if ((game.phase === 'question' || game.phase === 'results') && game.questions.length) {
+      const team = game.teams[socket.id];
+      const q = game.questions[game.currentQuestionIndex];
       socket.emit('question_start', {
-        index: game.currentQuestionIndex,
-        total: game.currentQuiz.questions.length,
-        text: q.text,
-        options: q.options,
-        timeLimit: q.timeLimit,
-        timeLeftMs,
+        ...playerQuestionPayload(team, q, game.currentQuestionIndex),
+        timeLeftMs: timeLeftMs(q),
       });
       socket.emit('race_update', getTeamsSorted());
       if (game.answers[socket.id]) {
         socket.emit('answer_result', game.answers[socket.id]);
       }
+      if (game.phase === 'results') {
+        socket.emit('question_results', playerResultsPayload(team, q));
+      }
+    } else if (game.phase === 'podium') {
+      socket.emit('game_over', podiumPayload());
     }
 
-    io.to('admin').emit('teams_update', getTeamsSorted());
+    io.emit('teams_update', getTeamsSorted());
   });
 
   socket.on('submit_answer', ({ optionIndex }) => {
     if (game.phase !== 'question') return;
     if (game.answers[socket.id]) return;
-    if (!game.teams[socket.id]) return;
+    const team = game.teams[socket.id];
+    if (!team) return;
+
+    const q = game.questions[game.currentQuestionIndex];
+    const originalIndex = team.optionOrder?.[optionIndex];
+    if (originalIndex === undefined) return;
 
     const timeMs = Date.now() - game.questionStartTime;
-    const q = game.currentQuiz.questions[game.currentQuestionIndex];
-    const correct = optionIndex === q.correctIndex;
-    const points = correct ? 12 / game.currentQuiz.questions.length : 0;
+    if (timeMs > q.timeLimit * 1000 + LATE_ANSWER_GRACE_MS) return;
+    const correct = originalIndex === q.correctIndex;
+    const points = correct ? 12 / game.questions.length : 0;
 
-    game.answers[socket.id] = { optionIndex, timeMs, correct, points };
-    game.teams[socket.id].hasParticipated = true;
-    game.teams[socket.id].score = parseFloat(
-      Math.min(game.teams[socket.id].score + points, 12).toFixed(4)
-    );
-    game.teams[socket.id].totalTime += timeMs;
+    game.answers[socket.id] = { optionIndex, originalIndex, timeMs, correct, points };
+    team.score = parseFloat(Math.min(team.score + points, 12).toFixed(4));
+    team.totalTime += timeMs;
 
     socket.emit('answer_result', { correct, points, timeMs });
 
     io.to('admin').emit('answer_received', {
-      teamName: game.teams[socket.id].name,
+      teamName: team.name,
       correct,
       answersCount: Object.keys(game.answers).length,
       totalTeams: Object.keys(game.teams).length,
@@ -305,8 +422,9 @@ io.on('connection', (socket) => {
       delete disconnectTimers[socket.id];
     }
     delete game.teams[socket.id];
+    delete game.answers[socket.id];
     console.log(`[logout] ${socket.id}`);
-    io.to('admin').emit('teams_update', getTeamsSorted());
+    io.emit('teams_update', getTeamsSorted());
   });
 
   socket.on('disconnect', () => {
@@ -317,11 +435,9 @@ io.on('connection', (socket) => {
     disconnectTimers[socket.id] = setTimeout(() => {
       delete game.teams[socket.id];
       delete disconnectTimers[socket.id];
-      io.to('admin').emit('teams_update', getTeamsSorted());
+      io.emit('teams_update', getTeamsSorted());
       console.log(`[timeout] ${team.name} removido por inactividad`);
     }, DISCONNECT_TTL);
-
-    io.to('admin').emit('teams_update', getTeamsSorted());
   });
 });
 
@@ -330,13 +446,8 @@ io.on('connection', (socket) => {
 const PORT = process.env.PORT || 3001;
 
 server.listen(PORT, '0.0.0.0', () => {
-  const lanIps = Object.values(os.networkInterfaces())
-    .flat()
-    .filter(i => i.family === 'IPv4' && !i.internal)
-    .map(i => `    LAN:     http://${i.address}:${PORT}`);
-
-  console.log('\n🏁  Versus Server listo!');
+  console.log('\n🏆  Servidor de Modo Competencia listo!');
   console.log(`    Local:   http://localhost:${PORT}`);
-  lanIps.forEach(l => console.log(l));
+  getLanIps().forEach(ip => console.log(`    LAN:     http://${ip}:${PORT}`));
   console.log('');
 });

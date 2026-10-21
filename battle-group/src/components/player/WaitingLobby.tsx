@@ -1,6 +1,5 @@
 import type { Team } from '../../types/game'
-
-const TEAM_EMOJIS = ['🔴','🟡','🔵','🟢','🟠','🟣','🩵','🩷']
+import Avatar from '../shared/Avatar'
 
 interface Props {
   teamName: string
@@ -8,56 +7,43 @@ interface Props {
 }
 
 export default function WaitingLobby({ teamName, teams }: Props) {
+  const me = teams.find(t => t.name === teamName)
+
   return (
-    <div className="min-h-dvh flex flex-col items-center justify-center p-6 bg-[#0a0a0f]">
-      {/* Status */}
-      <div className="mb-8 text-center animate-fade-slide-up">
-        <div className="text-5xl mb-4 animate-bounce">🏎️</div>
-        <h1 className="text-2xl font-black text-yellow-400 uppercase tracking-wide">
-          ¡Listo para la carrera!
-        </h1>
-        <p className="text-zinc-400 mt-2 text-sm">
-          Hola, <span className="text-white font-bold">{teamName}</span>
-        </p>
+    <div className="min-h-dvh flex flex-col items-center justify-center px-5 py-10 gap-6">
+      <div className="text-center animate-bounce-in">
+        <div className="flex justify-center mb-4 animate-float">
+          <Avatar name={teamName} colorIndex={me?.joinIndex ?? 0} size={88} />
+        </div>
+        <h1 className="game-title text-4xl md:text-5xl">¡Prepárate!</h1>
+        <p className="text-white/85 text-lg mt-1">{teamName}</p>
       </div>
 
-      {/* Waiting indicator */}
-      <div className="w-full max-w-sm bg-[#12121a] border border-[#2a2a3a] rounded-2xl p-5">
-        <div className="flex items-center justify-center gap-2 text-zinc-400 mb-5">
-          <span className="inline-block w-2 h-2 bg-yellow-400 rounded-full animate-ping" />
-          <span className="text-sm">Esperando que el admin inicie...</span>
+      <div className="panel w-full max-w-sm p-5 animate-pop-in" style={{ animationDelay: '120ms' }}>
+        <div className="flex flex-col items-center gap-2 text-center font-display text-xl text-highlight mb-5">
+          <p className="text-balance">Espera a que inicie la clase</p>
+          <span className="loading-dots" aria-hidden><span /><span /><span /></span>
         </div>
 
-        {teams.length > 0 && (
-          <>
-            <p className="text-xs text-zinc-500 uppercase tracking-widest text-center mb-3">
-              Equipos en la sala ({teams.length})
-            </p>
-            <div className="space-y-2">
-              {teams.map((t, i) => (
-                <div
-                  key={t.sessionId || i}
-                  className={`flex items-center gap-3 px-3 py-2 rounded-xl transition-colors ${
-                    t.name === teamName
-                      ? 'bg-yellow-400/10 border border-yellow-400/30'
-                      : 'bg-[#1a1a2e]'
-                  }`}
-                >
-                  <span className="text-base">{TEAM_EMOJIS[i % TEAM_EMOJIS.length]}</span>
-                  <span className={`text-sm font-medium ${
-                    t.name === teamName ? 'text-yellow-400' : 'text-white'
-                  }`}>
-                    {t.name}
-                    {t.name === teamName && (
-                      <span className="text-yellow-600 text-xs ml-2">(tú)</span>
-                    )}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
+        <p className="text-ink-soft text-sm text-center mb-3">Jugadores ({teams.length})</p>
+        <ul className="flex flex-wrap justify-center gap-2">
+          {teams.map(t => (
+            <li
+              key={t.sessionId}
+              className={`flex items-center gap-2 pl-1 pr-3 py-1 rounded-full animate-pop-in ${
+                t.name === teamName ? 'row-me' : 'row-card'
+              }`}
+            >
+              <Avatar name={t.name} colorIndex={t.joinIndex} size={26} />
+              <span className="text-sm">{t.name}</span>
+            </li>
+          ))}
+        </ul>
       </div>
+
+      <p className="text-white/75 text-sm text-center max-w-xs">
+        Nota: en caso de empate, gana quien responda más rápido.
+      </p>
     </div>
   )
 }

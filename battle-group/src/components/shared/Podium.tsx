@@ -1,62 +1,103 @@
+import { useEffect, useState } from 'react'
 import type { Team } from '../../types/game'
-import { CAR_COLORS } from '../../constants/colors'
+import { formatScore } from '../../utils/format'
+import Avatar from './Avatar'
+import Confetti from './Confetti'
+import Leaderboard from './Leaderboard'
 
-const MEDALS   = { 1: '🥇', 2: '🥈', 3: '🥉' }
-const HEIGHTS  = { 1: 'h-32', 2: 'h-20', 3: 'h-14' }
-// Orden visual del podio: 2º izq, 1º centro, 3º der
-const DISPLAY_ORDER = [1, 0, 2] as const
+type Rank = 1 | 2 | 3
+
+const BLOCK_HEIGHTS: Record<Rank, string> = { 1: 'h-48 md:h-56', 2: 'h-36 md:h-40', 3: 'h-28 md:h-32' }
+const BLOCKS: Record<Rank, { top: string; bottom: string; edge: string; fg: string }> = {
+  1: { top: '#ffe27a', bottom: '#ffb21e', edge: '#c47a00', fg: '#7a4700' },
+  2: { top: '#f4f6fd', bottom: '#c3cbe3', edge: '#8a93b5', fg: '#434b6e' },
+  3: { top: '#ffc58f', bottom: '#e8833a', edge: '#9c4a14', fg: '#5a2a07' },
+}
+// Visual order: 2nd left, 1st center, 3rd right
+const DISPLAY_ORDER: Rank[] = [2, 1, 3]
+// Stage at which each rank is revealed: 3rd first, then 2nd, then 1st
+const REVEAL_STAGE: Record<Rank, number> = { 3: 1, 2: 2, 1: 3 }
+const STAGE_TIMES_MS = [1200, 3000, 5000, 6800]
+const STAGE_CAPTIONS = ['', 'Tercer lugar', 'Segundo lugar', '¡Y el campeón es...!', '¡Buen juego a todos!']
 
 interface Props {
-  podium: Team[]    // top 3
-  all: Team[]       // todos para tabla completa
+  podium: Team[]
+  all: Team[]
   myTeamName?: string
 }
 
 export default function Podium({ podium, all, myTeamName }: Props) {
+  const [stage, setStage] = useState(0)
+
+  useEffect(() => {
+    const timers = STAGE_TIMES_MS.map((ms, i) => setTimeout(() => setStage(i + 1), ms))
+    return () => timers.forEach(clearTimeout)
+  }, [])
+
+  const myRank = myTeamName ? all.findIndex(t => t.name === myTeamName) + 1 : 0
+  const winnerRevealed = stage >= REVEAL_STAGE[1]
+  const listVisible = stage >= STAGE_TIMES_MS.length
+  const caption = STAGE_CAPTIONS[stage]
+
   return (
-    <div className="min-h-dvh flex flex-col items-center bg-[#0a0a0f] px-4 py-10">
-      <h1 className="text-4xl font-black text-yellow-400 uppercase tracking-widest mb-1 animate-bounce-in">
-        🏁 ¡Fin de Carrera!
-      </h1>
-      <p className="text-zinc-500 text-sm mb-10">Clasificación final</p>
+    <div className="min-h-dvh flex flex-col items-center px-4 pt-10 pb-24 overflow-hidden">
+      {winnerRevealed && <Confetti />}
 
-      {/* Podio visual */}
-      <div className="flex items-end gap-3 mb-12">
-        {DISPLAY_ORDER.map(idx => {
-          const team = podium[idx]
-          if (!team) return null
+      <header className="text-center mb-8 animate-bounce-in">
+        <h1 className="game-title text-5xl md:text-7xl">Resultados</h1>
+        <p key={stage} className="font-display text-2xl text-highlight mt-2 h-8 animate-pop-in">
+          {caption}
+        </p>
+      </header>
 
-          const rank    = (idx + 1) as 1 | 2 | 3
-          const teamIdx = all.findIndex(t => t.name === team.name)
-          const color   = CAR_COLORS[teamIdx % CAR_COLORS.length]
-          const isMe    = team.name === myTeamName
+      <div className="relative flex items-end justify-center gap-3 md:gap-6 w-full max-w-2xl mb-12">
+        {winnerRevealed && <div className="winner-rays" aria-hidden />}
+
+        {DISPLAY_ORDER.map(rank => {
+          const team = podium[rank - 1]
+          if (!team) return <div key={rank} className="w-24 md:w-40" />
+
+          const isRevealed = stage >= REVEAL_STAGE[rank]
+          const isMe = team.name === myTeamName
+          const block = BLOCKS[rank]
 
           return (
-            <div key={team.name} className="flex flex-col items-center gap-2 animate-bounce-in">
-              <span className="text-3xl">{MEDALS[rank]}</span>
-
+            <div key={rank} className="relative flex flex-col items-center w-24 md:w-40">
               <div
-                className={`text-center px-3 py-1 rounded-xl text-sm font-bold ${
-                  isMe ? 'ring-2 ring-white ring-offset-1 ring-offset-[#0a0a0f]' : ''
+                className={`flex flex-col items-center gap-1 mb-3 text-center ${
+                  isRevealed ? 'animate-bounce-in' : 'invisible'
                 }`}
-                style={{ background: `${color}22`, color }}
               >
-                {team.name}
-                {isMe && <span className="text-white text-xs ml-1">(tú)</span>}
+                {rank === 1 && (
+                  <span className="text-gold text-2xl md:text-3xl tracking-wider animate-wiggle" aria-hidden>
+                    ★★★
+                  </span>
+                )}
+                <Avatar name={team.name} colorIndex={team.joinIndex} size={rank === 1 ? 72 : 56} />
+                <span
+                  className={`font-display leading-tight break-words max-w-full ${
+                    rank === 1 ? 'text-xl md:text-2xl' : 'text-base md:text-lg'
+                  }`}
+                >
+                  {team.name}{isMe && ' (tú)'}
+                </span>
+                <span className="pill text-sm">{formatScore(team.score)} pts</span>
               </div>
 
-              <span className="text-white font-black text-xl tabular-nums">
-                {team.score.toFixed(1)}
-                <span className="text-zinc-500 text-sm font-normal"> pts</span>
-              </span>
-
-              {/* Bloque del podio */}
               <div
-                className={`w-24 ${HEIGHTS[rank]} rounded-t-xl flex items-center justify-center`}
-                style={{ background: `${color}25`, border: `2px solid ${color}55` }}
+                className={`w-full ${BLOCK_HEIGHTS[rank]} rounded-t-3xl flex justify-center pt-3 ${
+                  isRevealed ? 'animate-grow-up' : 'border-4 border-dashed border-white/30'
+                }`}
+                style={isRevealed ? {
+                  background: `linear-gradient(180deg, ${block.top}, ${block.bottom})`,
+                  boxShadow: `inset 0 -10px 0 ${block.edge}, inset 0 4px 0 rgba(255,255,255,0.6), 0 14px 30px -10px rgba(20,10,70,0.5)`,
+                } : undefined}
               >
-                <span className="text-4xl font-black" style={{ color }}>
-                  {rank}
+                <span
+                  className={`font-display text-5xl md:text-7xl ${isRevealed ? '' : 'text-white/40 animate-pulse'}`}
+                  style={isRevealed ? { color: block.fg, textShadow: '0 3px 0 rgba(255,255,255,0.5)' } : undefined}
+                >
+                  {isRevealed ? rank : '?'}
                 </span>
               </div>
             </div>
@@ -64,41 +105,16 @@ export default function Podium({ podium, all, myTeamName }: Props) {
         })}
       </div>
 
-      {/* Tabla completa si hay más de 3 equipos */}
-      {all.length > 3 && (
-        <div className="w-full max-w-sm">
-          <p className="text-xs text-zinc-500 uppercase tracking-widest mb-3 text-center">
-            Todos los equipos
-          </p>
-          <div className="space-y-2">
-            {all.slice(3).map((team, i) => {
-              const isMe    = team.name === myTeamName
-              const teamIdx = all.findIndex(t => t.name === team.name)
-              const color   = CAR_COLORS[teamIdx % CAR_COLORS.length]
-
-              return (
-                <div
-                  key={team.name}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-xl ${
-                    isMe
-                      ? 'bg-yellow-400/10 border border-yellow-400/30'
-                      : 'bg-[#12121a] border border-[#2a2a3a]'
-                  }`}
-                >
-                  <span className="text-zinc-500 font-bold w-5 text-center text-sm">
-                    {i + 4}
-                  </span>
-                  <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: color }} />
-                  <span className={`flex-1 font-medium text-sm ${isMe ? 'text-yellow-400' : 'text-white'}`}>
-                    {team.name}
-                  </span>
-                  <span className="text-zinc-400 tabular-nums text-sm">
-                    {team.score.toFixed(1)} pts
-                  </span>
-                </div>
-              )
-            })}
-          </div>
+      {listVisible && (
+        <div className="w-full max-w-md space-y-4 animate-fade-slide-up">
+          {myRank > 0 && (
+            <div className="panel p-5 text-center">
+              <p className="text-ink-soft">Tu posición final</p>
+              <p className="font-display text-5xl text-highlight mt-1">#{myRank}</p>
+              <p className="text-ink-soft mt-1">de {all.length} jugadores</p>
+            </div>
+          )}
+          <Leaderboard teams={all} highlightName={myTeamName} limit={10} title="Clasificación final" />
         </div>
       )}
     </div>

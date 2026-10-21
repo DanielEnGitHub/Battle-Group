@@ -353,5 +353,280 @@
       }
     ],
     "createdAt": "2026-05-28T00:49:21.686Z"
+  },
+  {
+    "id": "quiz_1792543170536",
+    "name": "5to y 6to",
+    "questions": [
+      {
+        "text": "¿Para qué sirve la opción siguiente en Excel?",
+        "options": [
+          "Para cambiar el color de relleno de las celdas",
+          "Para cambiar el color de la letra",
+          "Para pintar los bordes de la celda",
+          "Para borrar lo que tiene la celda"
+        ],
+        "correctIndex": 0,
+        "timeLimit": 20,
+        "img": "img/2025/botepintura.png",
+        "topic": "computer"
+      },
+      {
+        "text": "¿Qué es una celda o casilla en Excel?",
+        "options": [
+          "El cuadro donde se cruzan una columna y una fila",
+          "Una fila completa",
+          "Una columna completa",
+          "Una hoja de Excel"
+        ],
+        "correctIndex": 0,
+        "timeLimit": 20,
+        "topic": "computer"
+      },
+      {
+        "text": "En Excel, las columnas se identifican con...",
+        "options": [
+          "Letras (A, B, C...)",
+          "Números (1, 2, 3...)",
+          "Colores",
+          "Nombres de personas"
+        ],
+        "correctIndex": 0,
+        "timeLimit": 20,
+        "img": "img/2025/columna.png",
+        "topic": "computer"
+      },
+      {
+        "text": "En Excel, las filas se identifican con...",
+        "options": [
+          "Números (1, 2, 3...)",
+          "Letras (A, B, C...)",
+          "Símbolos",
+          "Colores"
+        ],
+        "correctIndex": 0,
+        "timeLimit": 20,
+        "img": "img/2025/filas.png",
+        "topic": "computer"
+      },
+      {
+        "text": "¿Cómo se llama la celda que está en la columna C y en la fila 4?",
+        "options": [
+          "C4",
+          "4C",
+          "C-4",
+          "CF4"
+        ],
+        "correctIndex": 0,
+        "timeLimit": 20,
+        "topic": "computer"
+      },
+      {
+        "text": "¿Cómo se hace más ancha una columna en Excel?",
+        "options": [
+          "Arrastrando la línea que está entre las letras de las columnas",
+          "Escribiendo más texto en la celda",
+          "Presionando Enter varias veces",
+          "Cambiando el color de la celda"
+        ],
+        "correctIndex": 0,
+        "timeLimit": 20,
+        "topic": "computer"
+      },
+      {
+        "text": "¿Qué signo se usa para dividir en Excel?",
+        "options": [
+          "/",
+          "\\",
+          "÷",
+          ":"
+        ],
+        "correctIndex": 0,
+        "timeLimit": 20,
+        "topic": "computer"
+      },
+      {
+        "text": "Si quieres multiplicar 5 por 3 en Excel, ¿qué fórmula está bien escrita?",
+        "options": [
+          "=5*3",
+          "=5x3",
+          "5*3",
+          "=5·3"
+        ],
+        "correctIndex": 0,
+        "timeLimit": 20,
+        "topic": "computer"
+      },
+      {
+        "text": "¿Cuál de estas fórmulas está bien escrita para sumar A1, A2 y A3?",
+        "options": [
+          "=A1+A2+A3",
+          "=A1+A2+A3=",
+          "A1+A2+A3=",
+          "=A1 A2 A3"
+        ],
+        "correctIndex": 0,
+        "timeLimit": 20,
+        "topic": "computer"
+      },
+      {
+        "text": "Si en A1 hay un 10 y en B1 hay un 4, ¿qué resultado da =A1-B1?",
+        "options": [
+          "6",
+          "14",
+          "40",
+          "-6"
+        ],
+        "correctIndex": 0,
+        "timeLimit": 20,
+        "topic": "computer"
+      },
+      {
+        "text": "Si en A1 hay un 5 y en B1 hay un 3, ¿qué resultado da =A1*B1?",
+        "options": [
+          "15",
+          "8",
+          "2",
+          "53"
+        ],
+        "correctIndex": 0,
+        "timeLimit": 20,
+        "topic": "computer"
+      },
+      {
+        "text": "Si en A1 hay un 8 y en B1 hay un 2, ¿qué resultado da =A1/B1?",
+        "options": [
+          "4",
+          "16",
+          "6",
+          "10"
+        ],
+        "correctIndex": 0,
+        "timeLimit": 20,
+        "topic": "computer"
+      },
+      {
+        "text": "¿Qué pasa si escribes A1+B1 en una celda sin el signo igual?",
+        "options": [
+          "Excel muestra el texto A1+B1 y no hace la suma",
+          "Excel hace la suma igual",
+          "Excel borra la celda",
+          "Excel se cierra"
+        ],
+        "correctIndex": 0,
+        "timeLimit": 20,
+        "topic": "computer"
+      },
+      {
+        "text": "Después de escribir =A1+B1, ¿qué tecla se presiona para ver el resultado?",
+        "options": [
+          "Enter",
+          "Shift",
+          "La barra espaciadora",
+          "Bloq Mayús o Caps Lock"
+        ],
+        "correctIndex": 0,
+        "timeLimit": 20,
+        "topic": "computer"
+      },
+      {
+        "text": "¿Cómo se escribe el signo igual (=) con el teclado?",
+        "options": [
+          "Mantener presionada la tecla Shift y luego presionar el 0",
+          "Presionar el 0 y luego la tecla Shift",
+          "Alt + 0",
+          "Ctrl + 0"
+        ],
+        "correctIndex": 0,
+        "timeLimit": 20,
+        "img": "img/2025/teclasShift.png",
+        "topic": "computer"
+      },
+      {
+        "text": "¿Qué combinación de teclas escribe el signo de admiración de cierre (!)?",
+        "options": [
+          "Shift + 1",
+          "Shift + 0",
+          "Alt + 1",
+          "Ctrl + 1"
+        ],
+        "correctIndex": 0,
+        "timeLimit": 20,
+        "topic": "computer"
+      },
+      {
+        "text": "¿Qué combinación de teclas escribe los DOS PUNTOS (:)?",
+        "options": [
+          "Shift + Punto",
+          "Shift + Coma",
+          "Alt + Punto",
+          "Solo la tecla Punto"
+        ],
+        "correctIndex": 0,
+        "timeLimit": 20,
+        "topic": "computer"
+      },
+      {
+        "text": "¿Cómo se escribe el signo de INTERROGACIÓN de APERTURA (¿)?",
+        "options": [
+          "Con la tecla que está al lado de BORRAR",
+          "Shift + la tecla que está al lado de BORRAR",
+          "Shift + 1",
+          "Shift + ?"
+        ],
+        "correctIndex": 0,
+        "timeLimit": 20,
+        "topic": "computer"
+      },
+      {
+        "text": "Si la luz de Bloq Mayús o Caps Lock está encendida y escribes, ¿qué aparece?",
+        "options": [
+          "Letras mayúsculas",
+          "Letras minúsculas",
+          "Números",
+          "Símbolos"
+        ],
+        "correctIndex": 0,
+        "timeLimit": 20,
+        "topic": "computer"
+      },
+      {
+        "text": "¿Qué pasa si presionas la tecla Bloq Mayús o Caps Lock dos veces?",
+        "options": [
+          "Se activa y luego se desactiva, y vuelve a escribir en minúsculas",
+          "Escribe todo en mayúsculas el doble de grande",
+          "Se apaga el teclado",
+          "Se borra el texto"
+        ],
+        "correctIndex": 0,
+        "timeLimit": 20,
+        "topic": "computer"
+      },
+      {
+        "text": "Para escribir la á de la palabra Matemáticas, ¿qué se debe hacer?",
+        "options": [
+          "Presionar la tecla que está a la par de la P y luego la a",
+          "Presionar la a y luego la tecla que está a la par de la P",
+          "Presionar Shift + a",
+          "Dibujar la tilde con el mouse"
+        ],
+        "correctIndex": 0,
+        "timeLimit": 20,
+        "topic": "computer"
+      },
+      {
+        "text": "¿Cómo se escribe una Á mayúscula con tilde?",
+        "options": [
+          "Presionar Caps Lock o Bloq Mayús y luego la tecla que está a la par de la P y luego la tecla A",
+          "Presionar Shift + A y luego la tecla que está a la par de la P",
+          "No se puede escribir una mayúscula con tilde",
+          "Presionar Ctrl + A"
+        ],
+        "correctIndex": 0,
+        "timeLimit": 20,
+        "topic": "computer"
+      }
+    ],
+    "createdAt": "2026-10-21T00:39:30.536398+00:00"
   }
 ]
